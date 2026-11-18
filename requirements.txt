@@ -1,0 +1,19 @@
+aiohttp>=3.9
+psutil>=5.9
+qrcode>=7.4
+numpy>=1.26 ; sys_platform == "win32"
+PyAudioWPatch>=0.2.12 ; sys_platform == "win32"
+pycaw>=20240210 ; sys_platform == "win32"
+comtypes>=1.4 ; sys_platform == "win32"
+pywin32>=306 ; sys_platform == "win32"
+winrt-runtime>=2.0 ; sys_platform == "win32"
+winrt-Windows.Foundation ; sys_platform == "win32"
+winrt-Windows.Foundation.Collections ; sys_platform == "win32"
+winrt-Windows.Media.Control ; sys_platform == "win32"
+winrt-Windows.Storage.Streams ; sys_platform == "win32"
+pystray>=0.19
+Pillow>=10
+winrt-Windows.UI.Notifications ; sys_platform == "win32"
+winrt-Windows.UI.Notifications.Management ; sys_platform == "win32"
+winrt-Windows.ApplicationModel ; sys_platform == "win32"
+cryptography>=42

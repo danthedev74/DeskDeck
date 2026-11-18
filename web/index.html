@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/s/icon-192.png">
+<link rel="apple-touch-icon" href="/s/icon-192.png">
+<link rel="preload" href="/s/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/s/style.css">
+<title>DeskDeck</title>
+</head>
+<body>
+<div id="root">
+
+  <!-- status bar -->
+  <header id="status">
+    <div class="sb-l">
+      <span id="sb-time" class="sb-time">--:--</span>
+      <span id="sb-demo" class="sb-demo" hidden>DEMO</span>
+    </div>
+    <div class="sb-r">
+      <span id="sb-priv" class="sb-priv"><i class="pd mic"></i><i class="pd cam"></i></span>
+      <span id="sb-ping" class="sb-ping" data-q="0"><span class="bars"><i></i><i></i><i></i><i></i></span><span class="ms">--</span></span>
+      <span id="sb-bat" class="sb-bat" hidden>
+        <span class="pct">--</span>
+        <span class="batt"><span class="cell"><span class="lvl"></span></span><span class="nub"></span><span class="bolt"></span></span>
+      </span>
+    </div>
+  </header>
+
+  <!-- dynamic island -->
+  <div id="island" class="island" data-mode="hidden">
+    <div class="isl-c">
+      <div class="isl-l" id="isl-l"></div>
+      <div class="isl-r" id="isl-r"></div>
+    </div>
+    <div class="isl-x" id="isl-x"></div>
+  </div>
+  <div id="isl-bub" class="isl-bub"></div>
+
+  <main id="pager">
+
+    <!-- HOME / STANDBY -->
+    <section class="page" id="p-home">
+      <div class="home">
+        <div class="clock" id="clock" data-style="digital">
+          <div class="cl-digital">
+            <div class="cl-date"><span id="cl-wd" class="wd">Wednesday</span> <span id="cl-dm">18 November</span></div>
+            <div class="cl-time"><span id="cl-h">--</span><span class="colon">:</span><span id="cl-m">--</span><span id="cl-ap" class="ap"></span></div>
+            <div class="cl-sub" id="cl-sub"></div>
+          </div>
+          <div class="cl-analog"><svg id="analog" viewBox="0 0 200 200"></svg></div>
+          <div class="cl-photo">
+            <div class="ph-stage" id="ph-stage"></div>
+            <div class="ph-shade"></div>
+            <div class="ph-over"><div id="ph-date" class="ph-date"></div><div id="ph-time" class="ph-time"></div></div>
+            <div class="ph-empty" id="ph-empty"><div class="ph-empty-ic" data-ic="photo"></div><b>No photos yet</b><span id="ph-dir">Drop pictures into Pictures\DeskDeck on your PC</span></div>
+          </div>
+          <div class="cl-hint" id="cl-hint">Tap to change clock</div>
+        </div>
+
+        <div class="widgets">
+          <article class="w w-sys" id="w-sys">
+            <div class="w-head"><span class="w-title">System</span><span class="w-meta" id="sys-net"></span></div>
+            <div class="sys-body">
+              <svg class="rings" viewBox="0 0 100 100">
+                <circle class="rt c-red" cx="50" cy="50" r="43"/><circle class="rv c-red" id="rg-cpu" cx="50" cy="50" r="43" pathLength="100"/>
+                <circle class="rt c-green" cx="50" cy="50" r="31"/><circle class="rv c-green" id="rg-gpu" cx="50" cy="50" r="31" pathLength="100"/>
+                <circle class="rt c-cyan" cx="50" cy="50" r="19"/><circle class="rv c-cyan" id="rg-ram" cx="50" cy="50" r="19" pathLength="100"/>
+              </svg>
+              <ul class="sys-leg">
+                <li><b class="c-red">CPU</b><span><em id="sys-cpu">--</em><small>%</small></span></li>
+                <li><b class="c-green">GPU</b><span><em id="sys-gpu">--</em><small>%</small></span></li>
+                <li><b class="c-cyan">RAM</b><span><em id="sys-ram">--</em><small id="sys-ramu">GB</small></span></li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="w w-lap" id="w-lap">
+            <div class="w-head"><span class="w-title">Laptop</span><span class="mode-pill" id="lap-mode" hidden></span></div>
+            <div class="lap-rings">
+              <div class="lr" id="lr-ram"><svg viewBox="0 0 44 44"><circle class="t" cx="22" cy="22" r="19"/><circle class="v" cx="22" cy="22" r="19" pathLength="100"/></svg><span class="lr-ic" data-ic="memory"></span><b class="lr-v">--</b><small>RAM</small></div>
+              <div class="lr" id="lr-cpu"><svg viewBox="0 0 44 44"><circle class="t" cx="22" cy="22" r="19"/><circle class="v" cx="22" cy="22" r="19" pathLength="100"/></svg><span class="lr-ic" data-ic="chip"></span><b class="lr-v">--</b><small>CPU</small></div>
+              <div class="lr" id="lr-gpu"><svg viewBox="0 0 44 44"><circle class="t" cx="22" cy="22" r="19"/><circle class="v" cx="22" cy="22" r="19" pathLength="100"/></svg><span class="lr-ic" data-ic="gpu"></span><b class="lr-v">--</b><small>GPU</small></div>
+            </div>
+            <div class="lap-foot" id="lap-foot"></div>
+          </article>
+
+          <article class="w w-wx" id="w-wx" data-sky="cloudy-day">
+            <div class="wx-loc"><span id="wx-loc">--</span><i data-ic="location"></i></div>
+            <div class="wx-temp" id="wx-temp">--°</div>
+            <div class="wx-bot">
+              <div class="wx-ic" id="wx-ic"></div>
+              <div class="wx-cond" id="wx-cond">--</div>
+              <div class="wx-hl" id="wx-hl"></div>
+            </div>
+          </article>
+
+          <article class="w w-f1" id="w-f1">
+            <div class="w-head"><span class="f1-mark">F1</span><span class="w-meta" id="f1w-round"></span></div>
+            <div class="f1w-name" id="f1w-name">--</div>
+            <div class="f1w-cd"><small id="f1w-cdl">Race in</small><b id="f1w-cd">--</b></div>
+            <div class="f1w-next" id="f1w-next"></div>
+            <div class="f1w-fav" id="f1w-fav"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOW PLAYING -->
+    <section class="page" id="p-music">
+      <canvas id="np-bg" class="np-bg" width="96" height="54"></canvas>
+      <div class="np-veil"></div>
+      <div class="np">
+        <div class="np-l">
+          <div class="np-art" id="np-artbox"><img id="np-art" alt=""><div class="np-art-ph" data-ic="note"></div></div>
+          <div class="np-meta">
+            <div class="np-title marquee" id="np-title"><span>Not Playing</span></div>
+            <div class="np-artist" id="np-artist"></div>
+          </div>
+          <div class="np-prog" id="np-prog">
+            <div class="np-track"><div class="np-fill" id="np-fill"></div></div>
+            <div class="np-times"><span id="np-cur">0:00</span><span id="np-app" class="np-app"></span><span id="np-rem">-0:00</span></div>
+          </div>
+          <div class="np-ctrl">
+            <button class="tb" data-media="prev" aria-label="Previous"><i data-ic="back"></i></button>
+            <button class="tb big" data-media="toggle" aria-label="Play/Pause" id="np-pp"><i data-ic="play"></i></button>
+            <button class="tb" data-media="next" aria-label="Next"><i data-ic="fwd"></i></button>
+          </div>
+        </div>
+        <div class="np-r">
+          <div class="lyrics" id="lyrics"><div class="ly" id="ly"></div></div>
+          <canvas class="np-spec" id="np-spec"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- F1 -->
+    <section class="page" id="p-f1">
+      <div class="f1">
+        <div class="card f1-hero" id="f1-hero">
+          <div class="f1-kick"><span class="f1-mark">F1</span><span id="f1-kick">--</span></div>
+          <h1 class="f1-name" id="f1-name">--</h1>
+          <div class="f1-circ" id="f1-circ"></div>
+          <div class="f1-chips"><div class="f1-chip" id="f1-chip-next"></div><div class="f1-chip" id="f1-chip-fav"></div></div>
+          <div class="f1-live" id="f1-live" hidden><i></i><span id="f1-live-t">LIVE</span></div>
+          <div class="f1-cd" id="f1-cd">
+            <div><b id="cd-d">--</b><small>days</small></div>
+            <div><b id="cd-h">--</b><small>hrs</small></div>
+            <div><b id="cd-m">--</b><small>min</small></div>
+            <div><b id="cd-s">--</b><small>sec</small></div>
+          </div>
+          <div class="f1-rt" id="f1-rt"></div>
+        </div>
+        <div class="card f1-sess">
+          <div class="card-t">This Weekend</div>
+          <ul id="f1-sess"></ul>
+        </div>
+        <div class="card f1-tab">
+          <div class="card-t">Drivers <span id="f1-season"></span></div>
+          <ol id="f1-table"></ol>
+          <div class="f1-last" id="f1-last"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTROL CENTER -->
+    <section class="page" id="p-cc">
+      <div class="cc">
+        <div class="cc-vol" id="cc-vol">
+          <div class="cc-vol-fill" id="cc-vol-fill"></div>
+          <div class="cc-vol-pct" id="cc-vol-pct">--</div>
+          <div class="cc-vol-ic" id="cc-vol-ic"></div>
+        </div>
+
+        <div class="mod cc-tog">
+          <button class="rb" id="cc-mic" data-a="mic"><span class="rb-c"><i data-ic="mic"></i></span><label>Mic</label></button>
+          <button class="rb" id="cc-mute" data-a="mute"><span class="rb-c"><i data-ic="speaker"></i></span><label>Sound</label></button>
+          <button class="rb" data-sys="shot"><span class="rb-c"><i data-ic="camera"></i></span><label>Screenshot</label></button>
+          <button class="rb" data-sys="snip"><span class="rb-c"><i data-ic="snip"></i></span><label>Snip</label></button>
+        </div>
+
+        <div class="mod cc-perf" id="cc-perf">
+          <div class="mod-t">Performance</div>
+          <button data-mode="silent"><i data-ic="leaf"></i><span>Silent</span></button>
+          <button data-mode="balanced"><i data-ic="dial"></i><span>Balanced</span></button>
+          <button data-mode="turbo"><i data-ic="flame"></i><span>Turbo</span></button>
+        </div>
+
+        <div class="cc-apps" id="cc-apps"></div>
+        <div class="cc-macros" id="cc-macros"></div>
+
+        <button class="tile cc-desk" data-sys="desk"><i data-ic="desktop"></i><span>Desktop</span></button>
+        <button class="tile cc-lock" data-sys="lock"><i data-ic="lock"></i><span>Lock</span></button>
+
+        <div class="mod cc-clip" id="cc-clip">
+          <div class="mod-t"><i data-ic="clipboard"></i>Clipboard</div>
+          <div class="clip-prev" id="clip-prev">Pull what you copied on the PC, or send text over.</div>
+          <div class="clip-btns">
+            <button class="pill" id="clip-pull"><i data-ic="down"></i>From PC</button>
+            <button class="pill primary" id="clip-open"><i data-ic="up"></i>To PC</button>
+          </div>
+        </div>
+
+        <div class="mod cc-media" id="cc-media">
+          <div class="ccm-top">
+            <div class="ccm-art"><img id="ccm-art" alt=""><i data-ic="note"></i></div>
+            <div class="ccm-meta"><b id="ccm-title">Not Playing</b><span id="ccm-artist"></span></div>
+          </div>
+          <div class="ccm-ctrl">
+            <button data-media="prev"><i data-ic="back"></i></button>
+            <button data-media="toggle" id="ccm-pp"><i data-ic="play"></i></button>
+            <button data-media="next"><i data-ic="fwd"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- DRIVE (CarPlay Ultra style) -->
+    <section class="page" id="p-health">
+      <div class="hl">
+        <div class="w hl-net">
+          <div class="hl-lbl" id="hl-netl">Network</div>
+          <div class="hl-rates">
+            <div><small class="dn">↓ Download</small><b id="hl-dn">--</b><span>Mb/s</span></div>
+            <div><small class="up">↑ Upload</small><b id="hl-up">--</b><span>Mb/s</span></div>
+          </div>
+          <svg class="hl-graph" viewBox="0 0 300 100" preserveAspectRatio="none">
+            <defs><linearGradient id="hlg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#64d2ff" stop-opacity=".38"/><stop offset="1" stop-color="#64d2ff" stop-opacity="0"/></linearGradient></defs>
+            <path id="hl-da" fill="url(#hlg)"/><polyline id="hl-dl" fill="none" stroke="#64d2ff" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+            <polyline id="hl-ul" fill="none" stroke="#ff375f" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+          </svg>
+          <div class="hl-foot" id="hl-netf"></div>
+        </div>
+        <div class="w hl-apps">
+          <div class="hl-lbl hl-sp"><span>Heavy apps</span><span class="dim">Hold End to close</span></div>
+          <div class="hl-list" id="hl-list"></div>
+        </div>
+        <div class="w hl-ai">
+          <div class="hl-lbl"><i data-ic="star"></i>Claude usage<span class="dim" id="hl-plan"></span></div>
+          <div class="hl-ring">
+            <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" class="t"/><circle cx="50" cy="50" r="45" class="v" id="hl-r1" pathLength="100"/>
+              <circle cx="50" cy="50" r="36.5" class="t t2"/><circle cx="50" cy="50" r="36.5" class="v v2" id="hl-r2" pathLength="100"/></svg>
+            <div><b id="hl-pct">--</b><small>5-hour</small></div>
+          </div>
+          <div class="hl-kv" id="hl-kv"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="p-focus">
+      <div class="fc">
+        <div class="w fc-timer">
+          <div class="fc-ring" id="fc-ring">
+            <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="t"/><circle cx="50" cy="50" r="46" class="v" id="fc-rv" pathLength="100"/></svg>
+            <div><small id="fc-mode">Focus</small><b id="fc-time">25:00</b><small id="fc-sub">Tap Start</small></div>
+          </div>
+          <div class="fc-btns" id="fc-btns"></div>
+        </div>
+        <div class="w fc-todo">
+          <div class="hl-lbl hl-sp"><span id="fc-todoh">Today</span><button class="dim" id="fc-clear">Clear done</button></div>
+          <div class="fc-items" id="fc-items"></div>
+          <form class="fc-add" id="fc-add"><input id="fc-in" placeholder="Add a task" maxlength="80" autocomplete="off" enterkeyhint="done"><button aria-label="Add"><i data-ic="up"></i></button></form>
+        </div>
+        <div class="w fc-day">
+          <div class="hl-lbl" id="fc-wd">Today</div>
+          <div class="fc-pct"><b id="fc-dp">--</b><span>of the day</span></div>
+          <div class="fc-hours" id="fc-hours"></div>
+          <div class="hl-foot" id="fc-wy"></div>
+        </div>
+        <div class="fc-mini">
+          <button class="w fc-sw" id="fc-sw"><div class="hl-lbl">Stopwatch</div><b id="fc-swt">00:00<i>.0</i></b><small id="fc-sws">Tap to start · hold to reset</small></button>
+          <div class="w fc-bat"><div class="hl-lbl" id="fc-batl">This screen</div><b id="fc-batv">--</b><small id="fc-bats"></small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="p-drive">
+      <div class="cp" id="cp">
+        <aside class="cp-dock">
+          <div class="cp-time" id="cp-time">--:--</div>
+          <button class="cp-app fz" data-fz="open" aria-label="Forza"><i data-ic="car"></i><span class="run" id="fz-run"></span></button>
+          <button class="cp-app shot" data-sys="gshot" aria-label="Capture"><i data-ic="camera"></i></button>
+          <button class="cp-app clip" data-sys="gclip" aria-label="Clip"><i data-ic="record"></i></button>
+          <button class="cp-app quit" id="fz-quit" aria-label="Quit Forza"><i data-ic="power"></i><svg class="hold" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" pathLength="100"/></svg></button>
+          <button class="cp-app hm" data-go="home" aria-label="Home"><i data-ic="grid"></i></button>
+        </aside>
+        <div class="cp-main">
+          <div class="cp-cluster" id="cp-cluster">
+            <div class="cp-glow" id="cp-glow"></div>
+            <div class="gauge" id="g-speed"><svg viewBox="0 0 200 200"></svg><div class="g-mid"><b id="g-kmh">0</b><small>km/h</small></div></div>
+            <div class="cp-center">
+              <div class="shift" id="shift"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="gear" id="gear">N</div>
+              <div class="cp-chips"><span class="clsb" id="clsb"><b>--</b><i>---</i></span><span class="chip" id="dtb">---</span></div>
+              <div class="pedals"><div><i id="pb-thr"></i></div><div><i id="pb-brk"></i></div></div>
+            </div>
+            <div class="gauge" id="g-rpm"><svg viewBox="0 0 200 200"></svg><div class="g-mid"><b id="g-rpmv">0.0</b><small>x1000 rpm</small></div></div>
+            <div class="cp-wait" id="cp-wait">
+              <i data-ic="gauge"></i>
+              <b>Waiting for Forza Horizon 6</b>
+              <span>In game: Settings &rsaquo; HUD and Gameplay &rsaquo; Data Out <em>ON</em> &middot; IP <em>127.0.0.1</em> &middot; Port <em id="cp-port">5301</em></span>
+            </div>
+            <div class="cp-paused" id="cp-paused">PAUSED</div>
+          </div>
+          <div class="cp-widgets">
+            <div class="cw cw-radio" id="cw-radio">
+              <div class="cwr-art" id="cwr-artbox"><img id="cwr-art" alt=""><i data-ic="note"></i></div>
+              <div class="cwr-body">
+                <div class="cwr-src"><span class="cwr-dot" id="cwr-dot"></span><b id="cwr-srcn">Now Playing</b><span id="cwr-st"></span></div>
+                <div class="cwr-meta"><b id="cwr-title">Not Playing</b><span id="cwr-artist"></span></div>
+                <div class="cwr-ctrl">
+                  <button data-rad="prev" aria-label="Previous"><i data-ic="back"></i></button>
+                  <button data-rad="toggle" class="pp" aria-label="Play/Pause"><i data-ic="play"></i></button>
+                  <button data-rad="next" aria-label="Next"><i data-ic="fwd"></i></button>
+                  <button class="q" id="cwr-q" aria-label="Up Next" hidden><i data-ic="queue"></i></button>
+                </div>
+              </div>
+              <div class="vpill na" id="mvol" aria-label="Music volume"><small id="mvol-pct">--</small><i id="mvol-fill"></i><span id="mvol-ic"></span></div>
+              <div class="cwr-prog"><i id="cwr-fill"></i></div>
+            </div>
+            <div class="cw cw-car" id="cw-car">
+              <div class="cwc-top"><span class="cwc-lbl">Car</span><span class="cwc-id" id="cwc-id"></span></div>
+              <div class="cwc-name" id="cwc-name">--</div>
+              <div class="cwc-stats">
+                <div><b id="cwc-hp">0</b><small>hp</small></div>
+                <div><b id="cwc-nm">0</b><small>Nm</small></div>
+                <div><b id="cwc-boost">0.0</b><small>psi</small></div>
+              </div>
+            </div>
+            <div class="cw cw-tel">
+              <svg id="gmeter" viewBox="-50 -50 100 100">
+                <circle r="45" class="gm-r"/><circle r="30" class="gm-r"/><circle r="15" class="gm-r"/>
+                <path d="M-45 0H45M0 -45V45" class="gm-x"/>
+                <polyline id="gm-trail" class="gm-trail" points=""/>
+                <circle id="gm-dot" r="5" class="gm-dot"/>
+              </svg>
+              <div class="tires" id="tires"><div><b>--</b></div><div><b>--</b></div><div><b>--</b></div><div><b>--</b></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="page" id="p-gaming">
+      <div class="gm">
+        <div class="w gm-fpsc">
+          <div class="gm-lbl"><i data-ic="gamepad"></i><span id="gm-name">No game running</span></div>
+          <div class="gm-big"><b id="gm-fps">--</b><span>FPS</span></div>
+          <div class="gm-st">
+            <div><small>Average</small><b id="gm-avg">--</b></div>
+            <div><small>Lowest</small><b id="gm-min">--</b></div>
+            <div><small>Frame time</small><b><span id="gm-ftv">--</span><i>ms</i></b></div>
+          </div>
+          <svg class="gm-graph" viewBox="0 0 300 60" preserveAspectRatio="none">
+            <defs><linearGradient id="gmg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#30d158" stop-opacity=".35"/><stop offset="1" stop-color="#30d158" stop-opacity="0"/></linearGradient></defs>
+            <path id="gm-area" fill="url(#gmg)"/><polyline id="gm-line" fill="none" stroke="#30d158" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+          </svg>
+          <div class="gm-hint" id="gm-hint" hidden>FPS needs RivaTuner Statistics Server (comes with MSI Afterburner) running.</div>
+        </div>
+        <div class="w gm-hw">
+          <div class="gm-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="t"/><circle cx="50" cy="50" r="44" class="v" id="gm-cpu-r" pathLength="100"/></svg>
+            <div><b id="gm-cpu-t">--</b><small>CPU</small></div></div>
+          <div class="gm-kv"><small>Load</small><b id="gm-cpu-l">--</b><small>Power</small><b id="gm-cpu-w">--</b></div>
+        </div>
+        <div class="w gm-hw">
+          <div class="gm-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="t"/><circle cx="50" cy="50" r="44" class="v" id="gm-gpu-r" pathLength="100"/></svg>
+            <div><b id="gm-gpu-t">--</b><small>GPU</small></div></div>
+          <div class="gm-kv"><small>Load</small><b id="gm-gpu-l">--</b><small>Power</small><b id="gm-gpu-w">--</b></div>
+        </div>
+        <div class="w gm-box">
+          <div class="gm-lbl">Memory</div>
+          <div class="gm-n"><b id="gm-ram">--</b><span id="gm-ramt"></span></div>
+          <div class="gm-bar"><i id="gm-ramb"></i></div>
+          <div class="gm-sub" id="gm-vram">VRAM --</div>
+        </div>
+        <div class="w gm-box">
+          <div class="gm-lbl">Fans · G-Helper</div>
+          <div class="gm-n"><b id="gm-fan">--</b><span>rpm</span></div>
+          <div class="gm-modes" id="gm-modes">
+            <button data-mode="silent">Silent</button><button data-mode="balanced">Balanced</button><button data-mode="turbo">Turbo</button>
+            <span id="gm-custom" hidden>Custom</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="p-meet">
+      <div class="mt">
+        <div class="w mt-info">
+          <div><div class="hl-lbl" id="mt-app">Call</div><div class="mt-title" id="mt-title">No call right now</div><div class="mt-sub" id="mt-sub"></div></div>
+          <div><small class="mt-sub">In call</small><b class="mt-timer" id="mt-timer">--:--</b></div>
+        </div>
+        <div class="w mt-mid">
+          <button class="mt-mute" id="mt-mute" aria-label="Mute microphone"><i data-ic="mic"></i></button>
+          <b class="mt-state" id="mt-state">Mic on</b>
+          <small class="mt-sub">Mutes your PC's microphone in every app</small>
+        </div>
+        <div class="mt-side">
+          <button class="w mt-btn" data-call="cam"><span class="mt-ic" id="mt-camic"><i data-ic="camera"></i></span><div><b>Camera</b><small id="mt-cams">Off</small></div></button>
+          <button class="w mt-btn" data-call="hand"><span class="mt-ic"><i data-ic="hand"></i></span><div><b>Raise hand</b><small>In the call app</small></div></button>
+          <button class="w mt-btn mt-leave" id="mt-leave"><b>Hold to leave</b></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="p-room">
+      <div class="rm" id="rm-grid"></div>
+    </section>
+  </main>
+
+  <nav id="dots" class="dots" aria-label="Pages"></nav>
+</div>
+
+<!-- ambient now playing -->
+<div id="ambient" class="ambient">
+  <canvas id="amb-bg" class="np-bg" width="96" height="54"></canvas>
+  <div class="np-veil"></div>
+  <div class="amb">
+    <img id="amb-art" class="amb-art" alt="">
+    <div class="amb-txt">
+      <div class="amb-time" id="amb-time"></div>
+      <div class="amb-title" id="amb-title"></div>
+      <div class="amb-artist" id="amb-artist"></div>
+      <div class="amb-line" id="amb-line"></div>
+    </div>
+  </div>
+</div>
+
+<!-- clipboard sheet -->
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-h"><button class="link" id="sheet-cancel">Cancel</button><b>Send to PC</b><button class="link strong" id="clip-send">Send</button></div>
+    <textarea id="clip-text" placeholder="Type or paste text..." spellcheck="false"></textarea>
+    <div class="sheet-row">
+      <button class="pill" id="clip-paste"><i data-ic="clipboard"></i>Paste from phone</button>
+      <label class="sw"><input type="checkbox" id="clip-auto"><span class="sw-t"></span>Also paste on PC</label>
+    </div>
+  </div>
+</div>
+
+<!-- Up Next (Universal Radio queue) -->
+<div id="qsheet" class="qs" hidden>
+  <div class="qs-card">
+    <div class="qs-now">
+      <div class="qs-art"><img id="qs-art" alt=""><i data-ic="note"></i></div>
+      <div class="qs-src" id="qs-src">FH6 Radio</div>
+      <div class="qs-t" id="qs-t"></div>
+      <div class="qs-a" id="qs-a"></div>
+      <div class="qs-prog"><i id="qs-fill"></i></div>
+      <div class="qs-tm"><span id="qs-cur">0:00</span><span id="qs-rem"></span></div>
+      <div class="qs-ctrl">
+        <button data-rad="prev" aria-label="Previous"><i data-ic="back"></i></button>
+        <button data-rad="toggle" class="pp" aria-label="Play/Pause"><i data-ic="play"></i></button>
+        <button data-rad="next" aria-label="Next"><i data-ic="fwd"></i></button>
+      </div>
+      <div class="qs-vol na" id="qs-vol"><i data-ic="speaker.0"></i><div class="qs-vtrack"><i id="qs-vfill"></i></div><i data-ic="speaker"></i></div>
+    </div>
+    <div class="qs-list">
+      <div class="qs-h"><h3>Up Next</h3><button class="qs-pill" id="qs-shuf" hidden><i data-ic="shuffle"></i><span>Shuffle</span></button><button class="qs-done" id="qs-done">Done</button></div>
+      <div class="qs-st" id="qs-st"></div>
+      <div class="qs-rows" id="qs-rows"></div>
+    </div>
+  </div>
+</div>
+
+<!-- name-this-car sheet -->
+<div id="carsheet" class="sheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-h"><button class="link" id="car-cancel">Cancel</button><b>Name this car</b><button class="link strong" id="car-save">Save</button></div>
+    <input id="car-input" class="tin" placeholder="e.g. 2021 Toyota GR Yaris" maxlength="60" autocomplete="off">
+    <div class="sheet-note" id="car-note"></div>
+  </div>
+</div>
+<div id="toast" class="toast"><i id="toast-ic"></i><span id="toast-t"></span></div>
+
+<div id="offline" class="offline">
+  <div class="hud"><div class="spin"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="off-t">Connecting to PC</b><span id="off-s"></span></div>
+</div>
+
+<div id="rotate" class="rotate"><div class="rot-ic" data-ic="rotate"></div>Turn your phone sideways</div>
+
+<div id="ov" class="ov" hidden>
+  <div class="ov-top"><div><b>Pages</b><small id="ov-sub"></small></div><button id="ov-edit">Edit</button></div>
+  <div class="ov-grid" id="ov-grid"></div>
+</div>
+
+<script src="/s/app.js"></script>
+</body>
+</html>

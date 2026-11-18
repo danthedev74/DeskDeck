@@ -1,0 +1,23 @@
+# Push a tag like v2.0.1 and this attaches DeskDeck.zip to the GitHub release.
+# Tray > "Check for updates" installs it (set "update_repo" in config.json).
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stamp version
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
+      - name: Build zip
+        run: |
+          mkdir -p out/deskdeck
+          rsync -a --exclude out --exclude .git --exclude .github --exclude docs ./ out/deskdeck/
+          cd out && zip -rq DeskDeck.zip deskdeck
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/DeskDeck.zip

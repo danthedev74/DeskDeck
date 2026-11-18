@@ -1,0 +1,10 @@
+# your own settings and secrets - never commit these
+config.json
+cars.json
+hooks.json
+focus.json
+certs/
+fh6_cars.cache.json
+deskdeck.log
+__pycache__/
+*.pyc
