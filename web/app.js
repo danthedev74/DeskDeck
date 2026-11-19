@@ -435,6 +435,8 @@
 
   const Hd = {};
   Hd.hello = (m) => {
+    // the PC was updated while this screen stayed open: load the new version
+    if (S.hello && S.hello.ver && m.ver && S.hello.ver !== m.ver) { setTimeout(() => location.reload(), 300); return; }
     S.hello = m;
     $("#sb-demo").hidden = !m.demo;
     buildCC(m);
