@@ -76,6 +76,8 @@ DEFAULT_CONFIG = {
     "photos_dir": "~/Pictures/DeskDeck",
     "lhm_url": "http://127.0.0.1:8085/data.json",
     "lyrics_offset": 0.3,
+    # word-by-word lyric timing from NetEase Cloud Music when it has the song (falls back to LRCLIB lines)
+    "word_lyrics": True,
     # Forza Horizon Data Out: set the game's Data Out port to "listen".
     # Every packet is passed on to "forward" so haptics apps (DSX, SimHub...) keep working.
     # FH6 Universal Radio mod (github.com/g0ldyy/fh6-universal-radio) web API
@@ -293,17 +295,93 @@ def clean_track(title: str, artist: str):
 LRC_TAG = re.compile(r"\[(\d+):(\d+(?:[.:]\d+)?)\]")
 
 
+WORD_TAG = re.compile(r"<(\d+):(\d+(?:[.:]\d+)?)>")
+
+
+def _lrc_t(m, s):
+    return round(int(m) * 60 + float(s.replace(":", ".")), 3)
+
+
 def parse_lrc(text: str) -> list:
     out = []
     for raw in (text or "").splitlines():
         tags = LRC_TAG.findall(raw)
         if not tags:
             continue
-        line = LRC_TAG.sub("", raw).strip()
+        line = WORD_TAG.sub("", LRC_TAG.sub("", raw)).strip()
+        line = re.sub(r"\s{2,}", " ", line)
         for m, s in tags:
-            out.append([round(int(m) * 60 + float(s.replace(":", ".")), 2), line])
+            out.append([_lrc_t(m, s), line])
     out.sort(key=lambda x: x[0])
     return out
+
+
+def parse_lrc_words(text: str):
+    """Enhanced LRC ("[00:12.00]<00:12.00>Every <00:12.40>thing") -> (lines, words) or None."""
+    if not WORD_TAG.search(text or ""):
+        return None
+    lines, words = [], []
+    for raw in (text or "").splitlines():
+        tags = LRC_TAG.findall(raw)
+        if not tags:
+            continue
+        body = LRC_TAG.sub("", raw)
+        parts = WORD_TAG.split(body)          # [pre, m, s, text, m, s, text, ...]
+        ws = []
+        for i in range(1, len(parts) - 2, 3):
+            t0 = _lrc_t(parts[i], parts[i + 1])
+            txt = parts[i + 2]
+            if txt.strip():
+                ws.append([t0, None, txt])
+        for k, w in enumerate(ws):
+            nxt = ws[k + 1][0] if k + 1 < len(ws) else None
+            w[1] = nxt if nxt is not None else round(w[0] + max(0.35, min(1.2, len(w[2].strip()) * 0.09)), 3)
+        line = re.sub(r"\s{2,}", " ", WORD_TAG.sub("", body)).strip()
+        lines.append([_lrc_t(*tags[0]), line])
+        words.append(ws or None)
+    order = sorted(range(len(lines)), key=lambda i: lines[i][0])
+    lines = [lines[i] for i in order]
+    words = [words[i] for i in order]
+    if not any(words):
+        return None
+    return lines, words
+
+
+YRC_WORD = re.compile(r"\((\d+),(\d+),-?\d+\)")
+YRC_LINE = re.compile(r"^\[(\d+),(\d+)\](.*)$")
+
+
+def parse_yrc(text: str):
+    """NetEase word-by-word lyrics: "[16210,3460](16210,670,0)Every(16880,410,0)thing ..." -> (lines, words)."""
+    lines, words = [], []
+    for raw in (text or "").splitlines():
+        m = YRC_LINE.match(raw.strip())
+        if not m:
+            continue                           # JSON credit lines etc.
+        parts = YRC_WORD.split(m.group(3))   # [pre, start, dur, text, start, dur, text, ...]
+        ws = []
+        for i in range(1, len(parts) - 2, 3):
+            t0 = int(parts[i]) / 1000
+            t1 = t0 + int(parts[i + 1]) / 1000
+            txt = parts[i + 2]
+            if txt:
+                ws.append([round(t0, 3), round(t1, 3), txt])
+        text_line = re.sub(r"\s{2,}", " ", "".join(w[2] for w in ws)).strip()
+        if not text_line:
+            continue
+        lines.append([round(int(m.group(1)) / 1000, 3), text_line])
+        words.append(ws)
+    if len(lines) < 4:
+        return None
+    return lines, words
+
+
+def _norm_song(s: str) -> str:
+    s = (s or "").lower()
+    s = re.sub(r"\s*[\(\[].*?[\)\]]", "", s)            # (feat. x), [Remastered]
+    s = re.sub(r"\s+-\s+.*$", "", s)                      # " - Radio Edit"
+    s = re.sub(r"\b(feat|ft)\.?\b.*$", "", s)
+    return re.sub(r"[^a-z0-9\u00c0-\uffff]", "", s)
 
 
 def png_bytes(w: int, h: int, px) -> bytes:
@@ -1786,7 +1864,20 @@ class DemoPlatform:
         for ln in tr["lines"]:
             lines.append([round(t, 2), ln])
             t += 9.0 if ln == "" else 4.6
-        return {"synced": True, "lines": lines}
+        if tr is not DEMO_TRACKS[0]:
+            return {"synced": True, "lines": lines, "src": "LRCLIB"}
+        # the first demo song has word timing, like NetEase gives us
+        out_l, out_w = [], []
+        for t0, ln in lines:
+            if not ln:
+                continue
+            ws, tt = [], t0
+            for k, w in enumerate(ln.split(" ")):
+                d = 0.22 + len(w) * 0.07 + (0.6 if k == len(ln.split(" ")) - 1 else 0)
+                ws.append([round(tt, 3), round(tt + d, 3), w + ("" if k == len(ln.split(" ")) - 1 else " ")])
+                tt += d + 0.04
+            out_l.append([t0, ln]); out_w.append(ws)
+        return {"synced": True, "lines": out_l, "words": out_w, "src": "NetEase"}
 
 
 # --------------------------------------------------------------------------------------
@@ -1998,6 +2089,17 @@ APP_NAMES = {"chrome": "Google Chrome", "msedge": "Microsoft Edge", "firefox": "
              "winword": "Word", "excel": "Excel", "powerpnt": "PowerPoint", "outlook": "Outlook", "olk": "Outlook",
              "msedgewebview2": "Edge WebView", "acrobat": "Acrobat", "idea64": "IntelliJ IDEA", "pycharm64": "PyCharm",
              "forzahorizon6": "Forza Horizon 6", "forzahorizon5": "Forza Horizon 5", "taskmgr": "Task Manager"}
+
+
+def fps_low(h):
+    """A 'lowest' that ignores loading screens and alt-tab hitches: 5th percentile of the
+    samples that are at least a quarter of the median."""
+    if len(h) < 6:
+        return round(min(h)) if h else None
+    srt = sorted(h)
+    med = srt[len(srt) // 2]
+    keep = [v for v in srt if v >= max(5.0, med * 0.25)] or srt
+    return round(keep[min(len(keep) - 1, int(len(keep) * 0.05))])
 
 
 def app_nice(exe_name: str) -> str:
@@ -2259,6 +2361,7 @@ class Engine:
         title, artist, album = m["title"], m["artist"], m["album"]
         if not album and " — " in artist:  # Apple Music packs "Artist — Album"
             artist, album = artist.split(" — ", 1)
+        album = re.sub(r"^[\s\-–—·:]+", "", album or "")  # "-Ugh, those feels again" -> "Ugh, those feels again"
         if app_label(m["app"]) in ("Chrome", "Edge", "Firefox", "Brave", "Opera"):  # YouTube in a browser
             title, artist = clean_track(title, artist)
         key = (m["app"], title, artist)
@@ -2304,17 +2407,78 @@ class Engine:
         if res is None:
             res = self.plat.demo_lyrics(key) if self.demo else None
             if res is None and not self.demo:
-                try:
-                    res = await self.fetch_lrclib(title, artist, album, dur)
-                except Exception as e:
-                    log.info("lyrics: %s", e)
-                    res = None
+                res = await self.fetch_lyrics(title, artist, album, dur)
             res = res or {"none": True}
             self.lyrics_cache[kid] = res
             while len(self.lyrics_cache) > 60:
                 self.lyrics_cache.pop(next(iter(self.lyrics_cache)))
         if self.media_key == key:
             await self.hub.send("lyrics", {"key": kid, **res})
+
+    async def fetch_lyrics(self, title, artist, album, dur):
+        async def safe(coro, what):
+            try:
+                return await asyncio.wait_for(coro, 9)
+            except Exception as e:
+                log.info("lyrics (%s): %s", what, e)
+                return None
+
+        jobs = [safe(self.fetch_lrclib(title, artist, album, dur), "lrclib")]
+        if self.cfg.get("word_lyrics", True):
+            jobs.append(safe(self.fetch_netease(title, artist, dur), "netease"))
+        got = await asyncio.gather(*jobs)
+        lrc = got[0]
+        ne = got[1] if len(got) > 1 else None
+        if ne and not (lrc and lrc.get("words")):
+            log.info("lyrics: %s - %s (NetEase, word timing)", artist, title)
+            return ne
+        if lrc:
+            log.info("lyrics: %s - %s (LRCLIB%s)", artist, title, ", word timing" if lrc.get("words") else "")
+        return lrc
+
+    async def fetch_netease(self, title, artist, dur):
+        t, a = clean_title(title), clean_artist(artist)
+        hdr = {"Referer": "https://music.163.com/", "Cookie": "os=pc; appver=2.10.13",
+               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+        async with self.http.post("https://music.163.com/api/search/get/web", headers=hdr,
+                                  data={"s": f"{t} {a}", "type": "1", "limit": "10", "offset": "0"}) as r:
+            js = await r.json(content_type=None)
+        songs = ((js or {}).get("result") or {}).get("songs") or []
+        nt, na = _norm_song(t), _norm_song(a)
+        best = None
+        for s in songs:
+            name = _norm_song(s.get("name", ""))
+            arts = [_norm_song(x.get("name", "")) for x in (s.get("artists") or s.get("ar") or [])]
+            ms = s.get("duration") or s.get("dt") or 0
+            if not name or not (name == nt or (len(nt) > 5 and (name.startswith(nt) or nt.startswith(name)))):
+                continue
+            if na and not any(x and (x in na or na in x) for x in arts):
+                continue
+            if dur and ms and abs(ms / 1000 - dur) > 3.5:
+                continue
+            best = s
+            break
+        if not best:
+            return None
+        sid = best["id"]
+        tries = (
+            ("POST", "https://music.163.com/api/song/lyric/v1",
+             {"id": str(sid), "cp": "false", "tv": "0", "lv": "0", "rv": "0", "kv": "0", "yv": "0", "ytv": "0", "yrv": "0"}),
+            ("GET", f"https://music.163.com/api/song/lyric?os=pc&id={sid}&lv=-1&kv=-1&tv=-1&rv=-1&yv=-1", None),
+        )
+        for method, url, data in tries:
+            try:
+                async with self.http.request(method, url, headers=hdr, data=data) as r:
+                    lj = await r.json(content_type=None)
+            except Exception as e:
+                log.debug("netease lyric %s: %s", url, e)
+                continue
+            yrc = ((lj or {}).get("yrc") or {}).get("lyric")
+            parsed = parse_yrc(yrc) if yrc else None
+            if parsed:
+                lines, words = parsed
+                return {"synced": True, "lines": lines, "words": words, "src": "NetEase"}
+        return None
 
     async def fetch_lrclib(self, title, artist, album, dur):
         t, a = clean_title(title), clean_artist(artist)
@@ -2326,7 +2490,10 @@ class Engine:
             if d.get("instrumental"):
                 return {"instrumental": True}
             if d.get("syncedLyrics"):
-                return {"synced": True, "lines": parse_lrc(d["syncedLyrics"])}
+                pw = parse_lrc_words(d["syncedLyrics"])
+                if pw:
+                    return {"synced": True, "lines": pw[0], "words": pw[1], "src": "LRCLIB"}
+                return {"synced": True, "lines": parse_lrc(d["syncedLyrics"]), "src": "LRCLIB"}
             if d.get("plainLyrics"):
                 return {"synced": False, "plain": d["plainLyrics"].splitlines()}
             return None
@@ -2477,7 +2644,12 @@ class Engine:
                 if app and (app in names or app + ".exe" in names) and r.get("page"):
                     act.append(str(r["page"]))
             self._rules_active = act
-        ctx = {"game": {"name": game["name"]} if game else None, "call": call, "rules": self._rules_active}
+        gm = None
+        if game:
+            gm = {"name": game["name"]}
+            if "forzahorizon" in (game.get("exe") or "").lower():
+                gm["fz"] = True
+        ctx = {"game": gm, "call": call, "rules": self._rules_active}
         if ctx != self._ctx_last:
             self._ctx_last = ctx
             await self.hub.send("ctx", ctx)
@@ -2497,7 +2669,7 @@ class Engine:
         await self.hub.send("game", {
             "name": g["name"], "rtss": f is not None,
             "fps": f and f.get("fps"), "ft": f and f.get("ft"),
-            "avg": round(sum(h) / len(h)) if h else None, "min": round(min(h)) if h else None,
+            "avg": round(sum(h) / len(h)) if h else None, "min": fps_low(h),
         }, keep=False)
 
     # ---------------- notifications, webhooks, Siri Shortcuts
@@ -3443,6 +3615,7 @@ code{{background:#1c1c1e;padding:2px 6px;border-radius:6px}}</style></head><body
         await ws.prepare(request)
         hello = {
             "t": "hello", "demo": self.demo, "fav": self.cfg.get("f1_favourite"), "ver": VERSION,
+            "lyoff": float(self.cfg.get("lyrics_offset", 0.3) or 0),
             "apps": [{k: a.get(k) for k in ("id", "label", "icon")} for a in self.cfg.get("apps", [])],
             "macros": [{k: a.get(k) for k in ("id", "label", "icon")} for a in self.cfg.get("macros", [])],
             "hook": {"key": self.cfg.get("hook_key"), "lan": self.lan_ip(), "port": self.cfg.get("port")},

@@ -114,7 +114,7 @@
 
     <!-- NOW PLAYING -->
     <section class="page" id="p-music">
-      <canvas id="np-bg" class="np-bg" width="96" height="54"></canvas>
+      <div id="np-bg" class="mesh"></div>
       <div class="np-veil"></div>
       <div class="np">
         <div class="np-l">
@@ -135,6 +135,18 @@
         </div>
         <div class="np-r">
           <div class="lyrics" id="lyrics"><div class="ly" id="ly"></div></div>
+          <button class="ly-tune" id="ly-tune" aria-label="Lyrics timing"><i data-ic="timer"></i></button>
+          <div class="ly-pop" id="ly-pop" hidden>
+            <b>Lyrics timing</b>
+            <small id="ly-src"></small>
+            <div class="ly-pop-row">
+              <button class="pill" data-lyo="-0.1">Later</button>
+              <div class="ly-pop-v" id="ly-off">0.0 s</div>
+              <button class="pill" data-lyo="0.1">Earlier</button>
+            </div>
+            <small>Words lighting up late? Tap Earlier.</small>
+            <button class="link" id="ly-reset">Reset</button>
+          </div>
           <canvas class="np-spec" id="np-spec"></canvas>
         </div>
       </div>
@@ -417,7 +429,7 @@
 
 <!-- ambient now playing -->
 <div id="ambient" class="ambient">
-  <canvas id="amb-bg" class="np-bg" width="96" height="54"></canvas>
+  <div id="amb-bg" class="mesh"></div>
   <div class="np-veil"></div>
   <div class="amb">
     <img id="amb-art" class="amb-art" alt="">

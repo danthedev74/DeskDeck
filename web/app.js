@@ -184,8 +184,13 @@
   const PAGE_T = { home: "Home", music: "Music", f1: "F1", cc: "Control", health: "Health", focus: "Focus",
     drive: "Drive", gaming: "Gaming", meet: "Meeting", room: "Room" };
   const AUTO_OK = new Set(["drive", "gaming", "meet", "room"]);   // pages that can appear only when needed
-  const PV_DEF = { home: "on", music: "on", f1: "on", cc: "on", health: "on", focus: "on", drive: "on", gaming: "auto", meet: "auto", room: "auto" };
+  const PV_DEF = { home: "on", music: "on", f1: "on", cc: "on", health: "on", focus: "on", drive: "auto", gaming: "auto", meet: "auto", room: "auto" };
   let PV = Object.assign({}, PV_DEF, LS.get("pagevis", {}));      // per device: on | auto | off
+  if (!LS.get("pv2", 0)) {                                          // 2.1: Drive became an auto page
+    if (PV.drive === "on") PV.drive = "auto";
+    LS.set("pagevis", PV); LS.set("pv2", 1);
+  }
+  if (navigator.standalone === true) document.body.classList.add("ios-app");
   const AUTO = new Set();                                           // auto pages currently triggered
   let vis = [], page = 0, pid = "home", goTarget = null;
   const pageHooks = [];
@@ -253,13 +258,15 @@
   /* rules: jump to a page while something is happening, come back when it's over */
   const RULE = {};
   const ruleOn = (id) => PV[id] !== "off";
-  function autoEnter(id) {
+  function autoEnter(id, nav = true) {
     if (!ruleOn(id) || !SECS[id]) return;
     const r = RULE[id];
-    if (r) { clearTimeout(r.exitT); r.exitT = null; return; }
-    RULE[id] = { prev: pid === id ? null : pid };
+    if (r) { clearTimeout(r.exitT); r.exitT = null; if (nav && pid !== id) requestAnimationFrame(() => go(id)); return; }
+    // coming from another auto page: remember where *that* one came from, so the way back skips it
+    const prev = pid === id ? null : RULE[pid] ? RULE[pid].prev : pid;
+    RULE[id] = { prev };
     autoPage(id, true);
-    requestAnimationFrame(() => go(id));
+    if (nav) requestAnimationFrame(() => go(id));
   }
   function autoExit(id, delay = 0) {
     const r = RULE[id];
@@ -628,8 +635,14 @@
     const key = `${m.title}\u0001${m.artist}`;
     const changed = key !== lastTitleKey;
     const firstTrack = lastTitleKey === null;
-    M.active = true; M.title = m.title; M.artist = m.artist; M.dur = m.dur || 0;
-    if (typeof m.pos === "number") { M.pos = m.pos; M.at = performance.now(); }
+    M.active = true; M.title = m.title; M.artist = m.artist; M.dur = m.dur || 0; M.app = m.app || "";
+    if (typeof m.pos === "number") {
+      // the PC reports a fresh position every couple of seconds; small differences are just jitter,
+      // so keep the running clock (word-by-word lyrics would visibly stutter otherwise)
+      const drift = m.pos - curPos();
+      if (changed || !M.playing || !m.playing || Math.abs(drift) > 0.35) { M.pos = m.pos; M.at = performance.now(); }
+      else if (Math.abs(drift) > 0.06) { M.pos += drift * 0.5; }
+    }
     if (M.playing !== m.playing) { M.pos = typeof m.pos === "number" ? m.pos : curPos(); M.at = performance.now(); }
     M.playing = !!m.playing;
     if (changed) {
@@ -683,15 +696,15 @@
     if (url === artUrl) return;
     artUrl = url;
     const imgs = [$("#np-art"), $("#ccm-art"), $("#amb-art")];
-    if (!url) { imgs.forEach((i) => { i.classList.remove("ok"); i.removeAttribute("src"); }); BG.art = null; islandArt = null; return; }
+    if (!url) { imgs.forEach((i) => { i.classList.remove("ok"); i.removeAttribute("src"); }); islandArt = null; setBackground(null, "none"); return; }
     const im = new Image();
     im.onload = () => {
       if (artUrl !== url) return;
       imgs.forEach((i) => { i.src = url; i.classList.add("ok"); });
       renderCard();
-      BG.art = im; islandArt = url;
+      islandArt = url;
       const p = palette(im);
-      BG.target = p.cols;
+      setBackground(im, url);
       document.documentElement.style.setProperty("--accent", `rgb(${p.accent.join(",")})`);
     };
     im.src = url;
@@ -734,74 +747,172 @@
   }
 
   /* animated background (tiny canvas, upscaled = free blur) */
-  const BG = {
-    cols: [[58, 52, 88], [40, 70, 110], [96, 48, 92], [32, 44, 70]], target: null, art: null, t: Math.random() * 100,
-    step() {
-      if (!this.target) return;
-      for (let i = 0; i < 4; i++) for (let k = 0; k < 3; k++) this.cols[i][k] += (this.target[i][k] - this.cols[i][k]) * 0.035;
-    },
-    draw(cv) {
-      const x = cv.getContext("2d"), w = cv.width, h = cv.height, c = this.cols, t = this.t, bass = AUDIO.bass;
-      x.globalAlpha = 1; x.globalCompositeOperation = "source-over";
-      x.fillStyle = `rgb(${c[3].map((v) => (v * 0.45) | 0).join(",")})`; x.fillRect(0, 0, w, h);
-      if (this.art) {
-        x.globalAlpha = 0.55; const s = w * 1.3;
-        x.drawImage(this.art, (w - s) / 2 + Math.sin(t * 0.05) * 8, (h - s) / 2 + Math.cos(t * 0.04) * 8, s, s);
-        x.globalAlpha = 1;
+  /* background: the artwork, pre-blurred once into a small texture, drifting in soft blobs
+     (Apple Music style). Nothing is blurred per frame, so it stays smooth on slow phones too. */
+  const BG = { cols: [[58, 52, 88], [40, 70, 110], [96, 48, 92], [32, 44, 70]], key: null };
+  function boxBlur(px, w, h, r) {
+    const tmp = new Float32Array(w * h * 3), div = 2 * r + 1;
+    for (let pass = 0; pass < 3; pass++) {
+      for (let y = 0; y < h; y++) {            // horizontal into tmp
+        let sr = 0, sg = 0, sb = 0;
+        for (let k = -r; k <= r; k++) { const x = clamp(k, 0, w - 1), i = (y * w + x) * 4; sr += px[i]; sg += px[i + 1]; sb += px[i + 2]; }
+        for (let x = 0; x < w; x++) {
+          const o = (y * w + x) * 3; tmp[o] = sr / div; tmp[o + 1] = sg / div; tmp[o + 2] = sb / div;
+          const a = (y * w + clamp(x - r, 0, w - 1)) * 4, b = (y * w + clamp(x + r + 1, 0, w - 1)) * 4;
+          sr += px[b] - px[a]; sg += px[b + 1] - px[a + 1]; sb += px[b + 2] - px[a + 2];
+        }
       }
-      for (let i = 0; i < 4; i++) {
-        const col = c[i].map((v) => v | 0).join(",");
-        const px = w * (0.5 + 0.5 * Math.sin(t * (0.09 + i * 0.031) + i * 1.9));
-        const py = h * (0.5 + 0.55 * Math.cos(t * (0.075 + i * 0.027) + i * 1.3));
-        const r = w * (0.4 + 0.09 * Math.sin(t * 0.17 + i)) * (1 + bass * 0.22);
-        const g = x.createRadialGradient(px, py, 0, px, py, r);
-        g.addColorStop(0, `rgba(${col},.9)`); g.addColorStop(1, `rgba(${col},0)`);
-        x.fillStyle = g; x.fillRect(0, 0, w, h);
+      for (let x = 0; x < w; x++) {            // vertical back into px
+        let sr = 0, sg = 0, sb = 0;
+        for (let k = -r; k <= r; k++) { const y = clamp(k, 0, h - 1), o = (y * w + x) * 3; sr += tmp[o]; sg += tmp[o + 1]; sb += tmp[o + 2]; }
+        for (let y = 0; y < h; y++) {
+          const i = (y * w + x) * 4; px[i] = sr / div; px[i + 1] = sg / div; px[i + 2] = sb / div;
+          const a = (clamp(y - r, 0, h - 1) * w + x) * 3, b = (clamp(y + r + 1, 0, h - 1) * w + x) * 3;
+          sr += tmp[b] - tmp[a]; sg += tmp[b + 1] - tmp[a + 1]; sb += tmp[b + 2] - tmp[a + 2];
+        }
       }
-      x.fillStyle = "rgba(0,0,0,.16)"; x.fillRect(0, 0, w, h);
-    },
-  };
+    }
+  }
+  function meshTexture(img) {
+    const N = 160, c = document.createElement("canvas"); c.width = c.height = N;
+    const x = c.getContext("2d", { willReadFrequently: true });
+    if (img) {
+      const t = document.createElement("canvas"); t.width = t.height = 18;   // drop the detail first
+      const tx = t.getContext("2d"); tx.imageSmoothingQuality = "high"; tx.drawImage(img, 0, 0, 18, 18);
+      x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(t, 0, 0, N, N);
+    } else {
+      const g = x.createLinearGradient(0, 0, N, N);
+      BG.cols.forEach((col, i) => g.addColorStop(i / 3, `rgb(${col.join(",")})`));
+      x.fillStyle = g; x.fillRect(0, 0, N, N);
+    }
+    let d;
+    try { d = x.getImageData(0, 0, N, N); } catch (e) { return null; }
+    const px = d.data;
+    boxBlur(px, N, N, 9);
+    for (let i = 0; i < px.length; i += 4) {     // richer, a bit darker, so white lyrics always read
+      const r = px[i], g = px[i + 1], b = px[i + 2], l = 0.3 * r + 0.59 * g + 0.11 * b;
+      const k = l > 170 ? 0.62 : l > 110 ? 0.74 : 0.86;
+      px[i] = clamp((l + (r - l) * 1.55) * k, 0, 255); px[i + 1] = clamp((l + (g - l) * 1.55) * k, 0, 255); px[i + 2] = clamp((l + (b - l) * 1.55) * k, 0, 255);
+    }
+    x.putImageData(d, 0, 0);
+    return c.toDataURL("image/jpeg", 0.92);
+  }
+  const MESH_BLOBS = 4;
+  function meshSet(host, tex) {
+    const set = document.createElement("div"); set.className = "mesh-set";
+    set.innerHTML = `<i class="base"></i>${Array.from({ length: MESH_BLOBS }, (_, k) => `<i class="b b${k + 1}"></i>`).join("")}`;
+    $$("i", set).forEach((i) => { i.style.backgroundImage = `url(${tex})`; });
+    host.appendChild(set);
+    requestAnimationFrame(() => requestAnimationFrame(() => set.classList.add("on")));
+    const old = $$(".mesh-set", host).filter((s) => s !== set);
+    setTimeout(() => old.forEach((s) => s.remove()), 1600);
+  }
+  function setBackground(img, key) {
+    if (key === BG.key) return;
+    BG.key = key;
+    const tex = meshTexture(img) || meshTexture(null);
+    if (!tex) return;
+    [$("#np-bg"), $("#amb-bg")].forEach((h) => meshSet(h, tex));
+  }
 
   /* lyrics */
-  const LY = { key: null, lines: [], els: [], synced: false, plain: false, idx: -2, offset: 0.3 };
+  const LY = { key: null, lines: [], els: [], synced: false, plain: false, idx: -2, offset: 0.3, wi: -1, src: "", words: false };
+  // timing: agent default + a nudge for apps whose position runs late + this screen's own correction
+  const APP_LAG = { "Apple Music": 0.7 };
+  const lyUser = () => +LS.get("lyoff", 0) || 0;
+  function lyOffset() { return ((S.hello && typeof S.hello.lyoff === "number") ? S.hello.lyoff : 0.3) + (APP_LAG[M.app] || 0) + lyUser(); }
+  function splitWords(txt) {
+    // "Hold the wheel, and" -> [["Hold", " "], ["the", " "], ["wheel,", " "], ["and", ""]]
+    const out = []; const re = /(\S+)(\s*)/g; let m;
+    while ((m = re.exec(txt))) out.push([m[1], m[2]]);
+    return out;
+  }
+  function estimateWords(txt, t, next) {
+    const ws = splitWords(txt);
+    const chars = ws.reduce((n, [w]) => n + w.length + 1, 0);
+    const gap = Math.max(0.6, (next != null ? next : t + 6) - t - 0.12);
+    const sing = clamp(chars * 0.085 + 0.5, Math.min(gap, gap * 0.55), gap);
+    let at = t;
+    return ws.map(([w, sp]) => {
+      const d = sing * (w.length + 1) / chars;
+      const o = { t0: at, t1: at + d, x: w, sp };
+      at += d; return o;
+    });
+  }
   Hd.lyrics = (m) => {
     const box = $("#ly"), r = $(".np-r");
     $$(".ly-msg", r).forEach((x) => x.remove());
-    box.innerHTML = ""; box.className = "ly"; LY.els = []; LY.lines = []; LY.idx = -2; LY.synced = false; LY.plain = false; LY.key = m.key;
-    r.classList.remove("nolyr");
+    box.innerHTML = ""; box.className = "ly"; LY.els = []; LY.lines = []; LY.idx = -2; LY.wi = -1; LY.synced = false; LY.plain = false; LY.key = m.key;
+    LY.src = m.src || ""; LY.words = !!(m.words && m.words.some(Boolean));
+    r.classList.remove("nolyr"); r.classList.remove("synced");
     const msg = (b, s) => { const d = document.createElement("div"); d.className = "ly-msg"; d.innerHTML = `<b>${esc(b)}</b>${s ? `<span>${esc(s)}</span>` : ""}`; $("#lyrics").appendChild(d); r.classList.add("nolyr"); };
     if (m.loading) { $("#amb-line").textContent = ""; return; }
     if (m.instrumental) { msg("Instrumental", ""); return; }
     if (m.synced && m.lines && m.lines.length) {
-      const raw = m.lines.map(([t, txt]) => ({ t, txt: txt || "" }));
-      if (raw[0].t > 4 && raw[0].txt) raw.unshift({ t: 0, txt: "" });
+      const W = m.words || [];
+      const raw = m.lines.map(([t, txt], i) => ({
+        t, txt: txt || "",
+        w: W[i] && W[i].length ? W[i].map(([t0, t1, x]) => { const mm = /^(.*?)(\s*)$/.exec(x); return { t0, t1, x: mm[1], sp: mm[2] }; }).filter((w) => w.x) : null,
+      }));
+      if (raw[0].t > 4 && raw[0].txt) raw.unshift({ t: 0, txt: "", w: null });
       const L = [];
       raw.forEach((l, i) => {
+        const nxt = raw[i + 1];
         if (!l.txt) {
-          const nxt = raw[i + 1]; const gap = (nxt ? nxt.t : l.t + 6) - l.t;
+          const gap = (nxt ? nxt.t : l.t + 6) - l.t;
           if (gap < 3.5 || (L.length && !L[L.length - 1].txt)) return;
           L.push({ t: l.t, txt: "", gap });
-        } else L.push(l);
+          return;
+        }
+        if (!l.w) l.w = estimateWords(l.txt, l.t, nxt ? nxt.t : null);
+        L.push(l);
+        // a long instrumental after a word-timed line: show the breathing dots
+        const end = l.w[l.w.length - 1].t1;
+        if (W.length && nxt && nxt.txt && nxt.t - end >= 4.5) L.push({ t: end + 0.3, txt: "", gap: nxt.t - end - 0.3 });
       });
-      LY.lines = L; LY.synced = true;
+      LY.lines = L; LY.synced = true; r.classList.add("synced");
       L.forEach((l) => {
         const el = document.createElement("div");
         el.className = "ly-l";
         if (!l.txt) { el.innerHTML = `<div class="ly-dots"><i></i><i></i><i></i></div>`; el.style.setProperty("--gap", `${Math.max(1, l.gap - 0.5).toFixed(2)}s`); }
-        else el.textContent = l.txt;
+        else {
+          el.innerHTML = l.w.map((w) => `<span class="lw">${esc(w.x)}</span>${w.sp ? " " : ""}`).join("");
+          $$(".lw", el).forEach((sp, k) => { l.w[k].el = sp; if (l.w[k].t1 - l.w[k].t0 > 1.1) sp.classList.add("long"); });
+        }
         el.addEventListener("click", () => { M.pos = l.t; M.at = performance.now(); send({ a: "media", cmd: "seek", v: l.t }); buzz(); });
         box.appendChild(el); LY.els.push(el);
       });
       requestAnimationFrame(() => layoutLyrics(true));
+      lyPopRender();
       return;
     }
     if (m.plain && m.plain.length) {
       LY.plain = true; box.classList.add("ly-plain");
-      m.plain.forEach((t) => { const el = document.createElement("div"); el.className = "ly-l"; el.textContent = t || " "; box.appendChild(el); LY.els.push(el); });
+      m.plain.forEach((t) => { const el = document.createElement("div"); el.className = "ly-l"; el.textContent = t || " "; box.appendChild(el); LY.els.push(el); });
       return;
     }
     msg("Lyrics not available", M.title ? `${M.title}` : "");
   };
+  function wordsReset(line) {
+    if (!line || !line.w) return;
+    line.w.forEach((w) => { w.el.classList.remove("done", "cur"); w.el.style.removeProperty("--p"); });
+  }
+  function wordsTick(p) {
+    const line = LY.lines[LY.idx];
+    if (!line || !line.w) return;
+    const W = line.w;
+    let k = LY.wi < 0 ? 0 : LY.wi;
+    if (p < W[k].t0) k = 0;
+    while (k < W.length - 1 && p >= W[k + 1].t0) k++;
+    if (k !== LY.wi) {
+      W.forEach((w, j) => { w.el.classList.toggle("done", j < k); w.el.classList.toggle("cur", j === k); if (j !== k) w.el.style.removeProperty("--p"); });
+      LY.wi = k;
+    }
+    const w = W[k];
+    const f = clamp((p - w.t0) / Math.max(0.05, w.t1 - w.t0), 0, 1);
+    const v = f.toFixed(3);
+    if (w.pv !== v) { w.pv = v; w.el.style.setProperty("--p", v); }
+  }
   function lyricsTick(pos) {
     if (LY.plain) {
       const box = $("#ly"), h = $("#lyrics").clientHeight;
@@ -810,15 +921,32 @@
       return;
     }
     if (!LY.synced) return;
-    const p = pos + LY.offset;
+    const p = pos + lyOffset();
     let lo = 0, hi = LY.lines.length - 1, i = -1;
     while (lo <= hi) { const mid = (lo + hi) >> 1; if (LY.lines[mid].t <= p) { i = mid; lo = mid + 1; } else hi = mid - 1; }
     if (i !== LY.idx) {
-      LY.idx = i; layoutLyrics(false);
+      wordsReset(LY.lines[LY.idx]);
+      LY.idx = i; LY.wi = -1; layoutLyrics(false);
       const line = i >= 0 ? LY.lines[i].txt : "";
       ambLine(line);
     }
+    wordsTick(p);
   }
+  /* lyrics timing popover */
+  function lyPopRender() {
+    const u = lyUser();
+    $("#ly-off").textContent = `${u > 0 ? "+" : u < 0 ? "−" : ""}${Math.abs(u).toFixed(1)} s`;
+    $("#ly-src").textContent = LY.synced ? (LY.words ? `Word timing · ${LY.src || "synced"}` : `Line timing · ${LY.src || "synced"} · words estimated`) : "";
+  }
+  $("#ly-tune").addEventListener("click", (e) => { e.stopPropagation(); buzz(); const p = $("#ly-pop"); p.hidden = !p.hidden; lyPopRender(); });
+  $("#ly-pop").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const b = e.target.closest("[data-lyo]");
+    if (b) { buzz(); LS.set("lyoff", +clamp(lyUser() + +b.dataset.lyo, -3, 3).toFixed(1)); }
+    if (e.target.closest("#ly-reset")) { buzz(); LS.set("lyoff", 0); }
+    lyPopRender();
+  });
+  document.addEventListener("click", (e) => { if (!e.target.closest("#ly-pop,#ly-tune")) $("#ly-pop").hidden = true; });
   function layoutLyrics(instant) {
     if (!LY.synced || !LY.els.length) return;
     const box = $("#lyrics");
@@ -1361,7 +1489,10 @@
   Hd.ctx = (m) => {
     const was = { game: CTX.game, call: CTX.call, rules: CTX.rules.slice() };
     CTX.game = m.game || null; CTX.call = m.call || null; CTX.rules = m.rules || [];
-    if (CTX.game && !was.game) autoEnter("gaming");
+    if (CTX.game && !was.game) {
+      if (CTX.game.fz && fzAuto()) { autoPage("gaming", true); autoEnter("drive"); }   // Forza gets its own page first
+      else autoEnter("gaming");
+    }
     if (!CTX.game && was.game) { autoExit("gaming", 5000); GAME.d = null; GAME.ft = []; }
     CTX.rules.filter((id) => !was.rules.includes(id)).forEach((id) => autoEnter(id));
     was.rules.filter((id) => !CTX.rules.includes(id)).forEach((id) => autoExit(id, 3000));
@@ -1803,7 +1934,7 @@
   /* =========================================================================
      drive: Forza telemetry, CarPlay Ultra style
      ========================================================================= */
-  const FZ = { d: null, live: false, lastLive: 0, prevPage: null, auto: false, rpm: 0, kmh: 0, maxRpm: 0, ord: null, name: undefined, trail: [], tick: 0 };
+  const FZ = { d: null, live: false, lastLive: 0, prevPage: null, auto: false, app: false, rpm: 0, kmh: 0, maxRpm: 0, ord: null, name: undefined, trail: [], tick: 0 };
   const CLS = [[500, "D", "#5ac8fa"], [600, "C", "#e6b800"], [700, "B", "#ff9f0a"], [800, "A", "#ff453a"], [900, "S1", "#bf5af2"], [998, "S2", "#0a84ff"]];
   const clsOf = (pi) => { for (const [t, n, c] of CLS) if (pi <= t) return [n, c]; return ["X", "#30d158"]; };
   const gearTxt = (g) => (g === 0 ? "R" : g >= 11 || g == null ? "N" : String(g));
@@ -1866,9 +1997,15 @@
       if (auto) autoEnter("drive");
     }
   };
-  Hd.fzapp = (m) => $("#fz-run").classList.toggle("on", !!m.running);
+  const fzAuto = () => !(S.hello && S.hello.forza && S.hello.forza.auto === false);
+  Hd.fzapp = (m) => {
+    const was = FZ.app; FZ.app = !!m.running;
+    $("#fz-run").classList.toggle("on", FZ.app);
+    if (FZ.app && !was && fzAuto()) autoEnter("drive", !(CTX.game && !CTX.game.fz));
+    if (!FZ.app && was) { FZ.auto = false; autoExit("drive", 1500); }
+  };
   function driveIdleCheck() {
-    if (!FZ.live && FZ.auto && Date.now() - FZ.lastLive > 20000) {
+    if (!FZ.live && FZ.auto && !FZ.app && Date.now() - FZ.lastLive > 20000) {
       autoExit("drive");
       FZ.auto = false;
     }
@@ -1983,8 +2120,8 @@
 
     bgAcc += dt;
     if ((pid === "music" || ambOn) && bgAcc >= 1 / 30) {
-      BG.t += bgAcc * (M.playing ? 1 : 0.25); BG.step();
-      BG.draw(ambOn ? $("#amb-bg") : $("#np-bg"));
+      const b = (1 + AUDIO.bass * 0.035).toFixed(4);
+      if (b !== BG.pulse) { BG.pulse = b; $$(".mesh-set.on").forEach((s) => { s.style.transform = `scale(${b})`; }); }
       bgAcc = 0;
     }
     if (pid === "music" && $(".np-r").classList.contains("nolyr")) drawSpec();
@@ -2027,10 +2164,11 @@
   paintIcons();
   renderVol();
   tickClock();
+  setBackground(null, "none");
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { fitMarquees(); renderF1(); });
   connect();
   wake();
   secondLoop();
   requestAnimationFrame(frame);
-  window.__dd = { go, S, M, Hd, setAmbient, islandQueue };
+  window.__dd = { go, S, M, Hd, setAmbient, islandQueue, LY };
 })();
