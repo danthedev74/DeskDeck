@@ -87,6 +87,8 @@ DEFAULT_CONFIG = {
     "capture_dirs": [],
     # Discord voice: your own app from discord.com/developers (OAuth2 client id + secret, redirect http://localhost)
     "discord": {"client_id": "", "client_secret": ""},
+    # F1 Live: connect to the F1 live timing feed around sessions (timing, tyres, race control; no login)
+    "f1_live": True,
     # word-by-word lyric timing from NetEase Cloud Music when it has the song (falls back to LRCLIB lines)
     "word_lyrics": True,
     # Forza Horizon Data Out: set the game's Data Out port to "listen".

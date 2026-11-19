@@ -1131,3 +1131,4 @@ body[data-page="drive"] .sb-time{opacity:0}
   .f1l-gp{font-size:2rem}
   .f1l-big b{font-size:3.6rem}
 }
+@media (max-height:480px){.np-out{display:none}}
