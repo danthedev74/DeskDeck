@@ -1385,7 +1385,8 @@
     const g = GAME.d, sy = S.sys || {}, lp = S.laptop || {};
     $("#gm-name").textContent = (g && g.name) || (CTX.game && CTX.game.name) || "No game running";
     const fps = g && g.fps;
-    setTxt($("#gm-fps"), fps ? String(Math.round(fps)) : "--");
+    setTxt($("#gm-fps"), fps ? String(Math.round(fps)) : "—");
+    $("#gm-fps").classList.toggle("none", !fps);
     setTxt($("#gm-avg"), g && g.avg ? String(g.avg) : "--");
     setTxt($("#gm-min"), g && g.min ? String(g.min) : "--");
     setTxt($("#gm-ftv"), g && g.ft ? g.ft.toFixed(1) : "--");
@@ -1394,7 +1395,7 @@
     const pts = GAME.ft.slice(-60);
     if (pts.length > 1) {
       const max = Math.max(20, ...pts) * 1.15;
-      const line = pts.map((v, i) => `${(i / 59 * 300).toFixed(1)},${(60 - v / max * 56).toFixed(1)}`);
+      const line = pts.map((v, i) => `${((i + 60 - pts.length) / 59 * 300).toFixed(1)},${(60 - v / max * 56).toFixed(1)}`);
       $("#gm-line").setAttribute("points", line.join(" "));
       $("#gm-area").setAttribute("d", `M${line[0].split(",")[0]},60 L${line.join(" L")} L${line[line.length - 1].split(",")[0]},60Z`);
     }
@@ -1414,9 +1415,13 @@
     setTxt($("#gm-vram"), sy.vram != null ? `VRAM ${sy.vram.toFixed(1)} GB` : "VRAM --");
     // fans + mode
     const fan = (lp.fans || [])[0];
-    setTxt($("#gm-fan"), fan ? fan.toLocaleString("en-US") : "--");
+    const MODE_N = { silent: "Silent", balanced: "Balanced", turbo: "Turbo" };
+    const mEl = $("#gm-mode");
+    setTxt(mEl, lp.mode === "custom" ? (lp.modeName || "Custom") : MODE_N[lp.mode] || "--");
+    mEl.dataset.mode = lp.mode || "";
+    const watts = (lp.cpuW || 0) + (lp.gpuW || 0);
+    setTxt($("#gm-perfsub"), fan ? `Fans ${fan.toLocaleString("en-US")} rpm` : watts ? `Drawing ${Math.round(watts)} W` : "");
     $$("#gm-modes [data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === lp.mode));
-    const cm = $("#gm-custom"); cm.hidden = lp.mode !== "custom"; cm.textContent = lp.modeName || "Custom";
   }
   Hd.game = (m) => {
     GAME.d = m;
