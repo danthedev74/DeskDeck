@@ -873,3 +873,90 @@ body[data-page="drive"] .sb-time{opacity:0}
 .gm-mode[data-mode="turbo"]{color:#ff6961}.gm-mode[data-mode="balanced"]{color:#4aa3ff}.gm-mode[data-mode="silent"]{color:var(--green)}
 .gm-modes{flex-wrap:nowrap}
 .gm-modes button{flex:1;justify-content:center;padding:0 .6rem}
+
+/* ---------------- audio output picker ---------------- */
+.np-out{align-self:center;display:inline-flex;align-items:center;gap:.6rem;height:3.2rem;padding:0 1.3rem 0 1.05rem;margin-top:1.3rem;border-radius:1.6rem;
+  background:rgba(255,255,255,.12);color:rgba(255,255,255,.82);font-size:1.18rem;font-weight:650;max-width:100%;transition:transform .2s var(--ease),background .2s}
+.np-out:active{transform:scale(.95);background:rgba(255,255,255,.2)}
+.np-out i{width:1.6rem;height:1.6rem;display:block;flex:none}
+.np-out span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-media{position:relative}
+.ccm-top{padding-right:3rem}
+.ccm-out{position:absolute;top:.85rem;right:.85rem;width:3.2rem;height:3.2rem;border-radius:50%;display:grid;place-items:center;color:rgba(255,255,255,.75);transition:transform .2s var(--ease),background .2s}
+.ccm-out:active{transform:scale(.88);background:rgba(255,255,255,.12)}
+.ccm-out i{width:1.9rem;height:1.9rem;display:block}
+.out-card{width:min(44rem,92vw);padding-bottom:1rem}
+.out-r{width:100%;display:grid;grid-template-columns:3.8rem minmax(0,1fr) 2.4rem;align-items:center;gap:1.1rem;padding:.8rem .2rem;text-align:left;border-top:.07rem solid var(--sep)}
+.out-r:first-child{border-top:0}
+.out-r:active{background:rgba(255,255,255,.04)}
+.out-ic{width:3.8rem;height:3.8rem;border-radius:50%;background:var(--card3);display:grid;place-items:center;transition:background .25s}
+.out-ic svg{width:2rem;height:2rem}
+.out-r.on .out-ic{background:var(--blue)}
+.out-n b{display:block;font-size:1.45rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.out-n small{display:block;font-size:1.1rem;color:var(--l2);font-weight:550;margin-top:.1rem}
+.out-ck{color:var(--blue);width:2.2rem;height:2.2rem}
+.out-ck svg{width:100%;height:100%;stroke-width:2.6}
+.out-empty{padding:2.2rem 0;text-align:center;color:var(--l2);font-size:1.35rem;font-weight:550}
+
+/* ---------------- Control Center button editor ---------------- */
+.tile{-webkit-touch-callout:none}
+.tile.holding{transform:scale(.93)}
+.tile.add{background:none!important;box-shadow:inset 0 0 0 .12rem rgba(255,255,255,.16)!important;color:var(--l3)}
+.tile.add span{color:var(--l3)}
+.te-card{width:min(66rem,94vw);max-height:calc(100dvh - 3.2rem - var(--sat));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+.te-card::-webkit-scrollbar{display:none}
+.te-top{display:flex;gap:1.4rem;align-items:stretch}
+.te-prev{flex:none;width:9.8rem;height:9.8rem;border-radius:2.1rem;background:var(--card2);pointer-events:none;padding:1.1rem 1.15rem}
+.te-prev i{width:2.4rem;height:2.4rem}
+.te-prev span{font-size:1.2rem}
+.te-fields{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:.8rem}
+.seg{display:flex;background:var(--card2);border-radius:1.15rem;padding:.3rem;gap:.2rem}
+.seg button{flex:1;min-width:0;height:3.5rem;border-radius:.9rem;font-size:1.18rem;font-weight:650;color:var(--l2);white-space:nowrap;transition:background .2s,color .2s}
+.seg button.on{background:rgba(255,255,255,.17);color:#fff;box-shadow:0 .1rem .4rem rgba(0,0,0,.25)}
+.te-val{margin-top:1.2rem}
+.te-cur{font-size:1.2rem;color:var(--l2);margin-bottom:.7rem;font-weight:550}
+.te-cur b{color:#fff}
+.te-apps{max-height:21rem;overflow-y:auto;overscroll-behavior:contain;margin-top:.8rem;border-radius:1.3rem;background:var(--card2);scrollbar-width:none}
+.te-apps::-webkit-scrollbar{display:none}
+.te-app{width:100%;display:flex;align-items:center;gap:1rem;padding:.65rem 1.1rem;text-align:left;border-top:.07rem solid var(--sep)}
+.te-app:first-child{border-top:0}
+.te-app:active{background:rgba(255,255,255,.05)}
+.te-app b{flex:1;min-width:0;font-size:1.35rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.te-app svg{width:1.9rem;height:1.9rem;color:var(--blue);stroke-width:2.6;flex:none}
+.te-ai{width:2.9rem;height:2.9rem;border-radius:.75rem;display:grid;place-items:center;font-weight:800;font-size:1.3rem;color:#fff;flex:none}
+.te-empty{padding:1.8rem 1rem;color:var(--l2);font-size:1.3rem;text-align:center;font-weight:550}
+.te-ta{height:9rem;padding:1rem 1.3rem;resize:none;line-height:1.35}
+.te-chips{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.8rem}
+.te-chips button{height:2.9rem;padding:0 1.1rem;border-radius:1.45rem;background:var(--card2);font-size:1.12rem;font-weight:600;color:var(--l2)}
+.te-chips button:active{background:var(--card3)}
+.te-sub{font-size:1.05rem;font-weight:700;color:var(--l3);text-transform:uppercase;letter-spacing:.07em;margin:1.5rem 0 .65rem}
+.te-icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(4.4rem,1fr));gap:.6rem}
+.te-icons button{aspect-ratio:1;border-radius:1.2rem;background:var(--card2);display:grid;place-items:center;transition:background .2s,transform .2s var(--ease)}
+.te-icons button:active{transform:scale(.9)}
+.te-icons button svg{width:2.2rem;height:2.2rem}
+.te-icons button.on{background:var(--blue)}
+.te-reset{display:block;margin-top:1.2rem;color:var(--red);font-size:1.35rem}
+
+/* ---------------- files -> PC ---------------- */
+.mod-t .mod-ic{margin-left:auto;width:2.9rem;height:2.9rem;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;color:#fff;flex:none;transition:transform .2s var(--ease),background .2s}
+.mod-t .mod-ic:active{transform:scale(.88);background:rgba(255,255,255,.2)}
+.mod-t .mod-ic i{width:1.55rem;height:1.55rem;display:block}
+.up-card{width:min(54rem,92vw)}
+.up-list{display:flex;gap:.8rem;overflow-x:auto;padding:.4rem 0 1.1rem;scrollbar-width:none}
+.up-list::-webkit-scrollbar{display:none}
+.up-it{flex:none;width:8.6rem}
+.up-it img,.up-it i{width:8.6rem;height:8.6rem;border-radius:1.2rem;object-fit:cover;display:grid;place-items:center;background:var(--card2);color:var(--l2);font-style:normal;font-weight:700;font-size:1.6rem}
+.up-it i svg{width:3rem;height:3rem}
+.up-it span{display:block;font-size:1rem;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.45rem;font-weight:550}
+.up-bar{height:.6rem;border-radius:.3rem;background:var(--card3);overflow:hidden}
+.up-bar i{display:block;height:100%;width:0;background:var(--blue);border-radius:.3rem;transition:width .25s ease,background .3s}
+.up-bar.ok i{background:var(--green)}
+.up-bar.bad i{background:var(--red);width:100%!important}
+.up-foot{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1rem;font-size:1.25rem;color:var(--l2);min-height:3.4rem;font-weight:550}
+.up-foot .pill{flex:none;padding:0 1.4rem}
+.drop{position:fixed;inset:0;z-index:95;background:rgba(10,132,255,.16);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);display:grid;place-items:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.drop.on{opacity:1}
+.drop>div{border:.2rem dashed rgba(255,255,255,.55);border-radius:3rem;padding:3.6rem 6rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.6rem}
+.drop i{width:4rem;height:4rem;display:block}
+.drop b{font-size:2.2rem;font-weight:750}
+.drop span{font-size:1.35rem;color:rgba(255,255,255,.7)}

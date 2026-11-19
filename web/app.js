@@ -76,6 +76,23 @@
     queue: `<path d="M9 6h11M9 12h11M9 18h7"/><circle ${F} cx="4.5" cy="6" r="1.2"/><circle ${F} cx="4.5" cy="12" r="1.2"/><circle ${F} cx="4.5" cy="18" r="1.2"/>`,
     shuffle: `<path d="M3.5 7h3.2c2 0 3.2 1 4.3 2.7l2 3.6c1.1 1.7 2.3 2.7 4.3 2.7h3.2M17.6 13l2.9 3-2.9 3M3.5 17h3.2c1.4 0 2.4-.5 3.2-1.3M13.3 8.3c.8-.8 1.8-1.3 3.2-1.3h4M17.6 4l2.9 3-2.9 3"/>`,
     star: `<path ${F} d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.6l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/>`,
+    airplay: `<path d="M6.4 17.6H5c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v9.6c0 1.1-.9 2-2 2h-1.4"/><path ${F} d="M12 13.6l5.2 6.2c.3.4 0 .9-.5.9H7.3c-.5 0-.8-.5-.5-.9z"/>`,
+    headphones: `<path d="M3.6 16.4V13a8.4 8.4 0 0 1 16.8 0v3.4"/><rect x="3.4" y="13.4" width="4.4" height="7" rx="1.8"/><rect x="16.2" y="13.4" width="4.4" height="7" rx="1.8"/>`,
+    "headphones.slash": `<path d="M3.6 16.4V13a8.4 8.4 0 0 1 13.9-6.4M20.4 13v3.4"/><rect x="3.4" y="13.4" width="4.4" height="7" rx="1.8"/><rect x="16.2" y="13.4" width="4.4" height="7" rx="1.8"/><path d="M3.4 3.4l17.2 17.2"/>`,
+    tv: `<rect x="2.6" y="4.2" width="18.8" height="12.6" rx="2"/><path d="M8.4 20.2h7.2"/>`,
+    plus: `<path d="M12 5v14M5 12h14"/>`,
+    checkmark: `<path d="M5 12.6l4.4 4.4L19 7.2"/>`,
+    link: `<path d="M10.2 13.8a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2M13.8 10.2a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/>`,
+    keyboard: `<rect x="2.4" y="6" width="19.2" height="12" rx="2.2"/><path d="M6.4 9.6h.01M9.5 9.6h.01M12.6 9.6h.01M15.7 9.6h.01M18 9.6h.01M7.6 14.4h8.8"/>`,
+    textcursor: `<path d="M5 6.4V5h14v1.4M12 5v14M9.4 19h5.2"/>`,
+    film: `<rect x="3" y="4.4" width="18" height="15.2" rx="2.2"/><path d="M7.4 4.4v15.2M16.6 4.4v15.2M3 9.4h4.4M3 14.6h4.4M16.6 9.4H21M16.6 14.6H21"/>`,
+    images: `<rect x="6.4" y="3.4" width="15" height="12.6" rx="2.2"/><path d="M3.2 7.4v10.8c0 1.2 1 2.2 2.2 2.2h12M6.4 13.4l3.6-3.4 3.4 3 2.4-2.2 5.6 4.8"/>`,
+    paperclip: `<path d="M20.4 11.4l-8 8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6"/>`,
+    doc: `<path d="M6.6 2.8h7.2l4.6 4.6v12c0 1-.8 1.8-1.8 1.8H6.6c-1 0-1.8-.8-1.8-1.8V4.6c0-1 .8-1.8 1.8-1.8z"/><path d="M13.6 2.8v4.8h4.8M8.4 13h7.2M8.4 16.6h5"/>`,
+    people: `<circle cx="9" cy="8.4" r="3.4"/><path d="M2.8 19.6c.6-3.4 3.1-5.4 6.2-5.4s5.6 2 6.2 5.4"/><path d="M15.6 5.2a3.4 3.4 0 0 1 0 6.4M17.4 14.4c2 .6 3.4 2.4 3.8 5.2"/>`,
+    pencil: `<path d="M4 20l1-4.2L16.2 4.6a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.2 19z"/><path d="M14.4 6.4l3.2 3.2"/>`,
+    trophy: `<path d="M7.4 4h9.2v5.4a4.6 4.6 0 0 1-9.2 0z"/><path d="M7.4 6H4.4c0 2.8 1.2 4.6 3.4 5M16.6 6h3c0 2.8-1.2 4.6-3.4 5M12 14v3.6M8.4 20.4h7.2l-.8-2.8H9.2z"/>`,
+    hourglass: `<path d="M6.4 3.4h11.2M6.4 20.6h11.2M7.6 3.4c0 4.4 4.4 5.4 4.4 8.6S7.6 16.2 7.6 20.6M16.4 3.4c0 4.4-4.4 5.4-4.4 8.6s4.4 4.2 4.4 8.6"/>`,
   };
   const svg = (name) => ICONS[name]
     ? `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
@@ -1205,23 +1222,35 @@
      control center
      ========================================================================= */
   const TILE_COLS = ["94 92 230", "10 132 255", "255 159 10", "48 209 88", "255 55 95", "142 142 147", "191 90 242", "64 203 224"];
+  /* the app + shortcut buttons: tap runs, hold to change (Stream Deck style) */
+  const TL = { apps: [], macros: [] };
+  const SLOTS = { apps: 6, macros: 4 };
   function buildCC(h) {
-    const apps = $("#cc-apps");
-    apps.innerHTML = (h.apps || []).slice(0, 6).map((a, i) => `<button class="tile sc" data-app="${esc(a.id)}" style="--tc:${TILE_COLS[i % TILE_COLS.length]}"><i data-ic="${esc(a.icon)}"></i><span>${esc(a.label)}</span></button>`).join("");
-    const mac = $("#cc-macros");
-    mac.innerHTML = (h.macros || []).slice(0, 4).map((a) => `<button class="tile" data-macro="${esc(a.id)}"><i data-ic="${esc(a.icon)}"></i><span>${esc(a.label)}</span></button>`).join("");
-    paintIcons(apps); paintIcons(mac);
+    TL.apps = (h.apps || []).slice(0, SLOTS.apps); TL.macros = (h.macros || []).slice(0, SLOTS.macros);
+    const tile = (lst, a, i) => (a
+      ? `<button class="tile${lst === "apps" ? " sc" : ""}" data-tl="${lst}:${i}"${lst === "apps" ? ` style="--tc:${TILE_COLS[i % TILE_COLS.length]}"` : ""}><i data-ic="${esc(a.icon || "star")}"></i><span>${esc(a.label || "")}</span></button>`
+      : `<button class="tile add" data-tl="${lst}:${i}"><i data-ic="plus"></i><span>Add</span></button>`);
+    for (const lst of ["apps", "macros"]) {
+      const host = $(lst === "apps" ? "#cc-apps" : "#cc-macros");
+      host.innerHTML = Array.from({ length: SLOTS[lst] }, (_, i) => tile(lst, TL[lst][i], i)).join("");
+      paintIcons(host);
+    }
   }
+  Hd.tiles = (m) => { if (S.hello) { S.hello.apps = m.apps; S.hello.macros = m.macros; } buildCC(m); };
   document.addEventListener("click", (e) => {
-    const t = e.target.closest("[data-app],[data-macro],[data-sys],[data-mode],[data-a]");
+    const t = e.target.closest("[data-tl],[data-sys],[data-mode],[data-a]");
     if (!t) return;
+    if (t.dataset.tl) {
+      if (ED.suppress) { ED.suppress = false; return; }       // the hold just opened the editor
+      buzz();
+      const [lst, i] = t.dataset.tl.split(":"); const tl = TL[lst][+i];
+      if (!tl) { openTileEditor(lst, +i); return; }
+      send({ a: "tile", list: lst, i: +i });
+      if (tl.type !== "app") toast(tl.label, "check");
+      return;
+    }
     buzz();
-    if (t.dataset.app) {
-      send({ a: "app", id: t.dataset.app });
-    } else if (t.dataset.macro) {
-      send({ a: "macro", id: t.dataset.macro });
-      toast($("span", t).textContent, "check");
-    } else if (t.dataset.sys) {
+    if (t.dataset.sys) {
       send({ a: "sys", v: t.dataset.sys });
       toast({ shot: "Screenshot saved", snip: "Snip", desk: "Show desktop", lock: "PC locked", gshot: "Game screenshot captured", gclip: "Clip saved (last 30s)" }[t.dataset.sys] || "Done", "check");
     } else if (t.dataset.mode) {
@@ -1266,6 +1295,233 @@
     send({ a: "clip_set", text, paste: $("#clip-auto").checked });
     $("#clip-prev").textContent = text; $("#clip-prev").classList.add("has");
     closeSheet();
+  });
+
+  /* generic sheets */
+  function sheetOpen(sel) { const sh = $(sel); sh.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => sh.classList.add("on"))); }
+  function sheetClose(sel) { const sh = $(sel); sh.classList.remove("on"); setTimeout(() => { if (!sh.classList.contains("on")) sh.hidden = true; }, 300); }
+  ["#outsheet", "#tilesheet", "#upsheet"].forEach((s) => $(s).addEventListener("click", (e) => { if (e.target === $(s)) sheetClose(s); }));
+
+  /* =========================================================================
+     audio output picker (speakers / AirPods / TV)
+     ========================================================================= */
+  const OUT = { list: null };
+  const outKind = (n) => (/airpods|buds|beats|headphone|headset|earphone|wh-1000|wf-1000|jabra|arctis|hyperx|cloud/i.test(n || "") ? "headphones"
+    : /hdmi|displayport|nvidia high|amd high|intel\(r\) display|\btv\b|samsung|sony|lg\b|monitor|dell|benq|philips/i.test(n || "") ? "tv" : "speaker");
+  function outLabel(n) {
+    const m = /^(?:Headphones|Headset|Earphones|Speakers?)\s*\((.+)\)$/i.exec(n || "");
+    if (m && !/realtek|high definition|audio$/i.test(m[1])) return m[1].replace(/\s*Hands-Free.*$/i, "");
+    return (n || "").replace(/\s*\(.*\)\s*$/, "") || n || "Output";
+  }
+  function renderOutPill() {
+    const n = S.vol && S.vol.out;
+    $("#np-out-t").textContent = n ? outLabel(n) : "Output";
+    $("#np-out-ic").innerHTML = svg(n ? (outKind(n) === "speaker" ? "airplay" : outKind(n)) : "airplay");
+  }
+  { const hv = Hd.vol; Hd.vol = (m) => { hv(m); renderOutPill(); }; }
+  function renderOut() {
+    const box = $("#out-list");
+    if (!OUT.list) { box.innerHTML = `<div class="out-empty">Looking for outputs…</div>`; return; }
+    if (!OUT.list.length) { box.innerHTML = `<div class="out-empty">No outputs found</div>`; return; }
+    box.innerHTML = OUT.list.map((o) => {
+      const k = outKind(o.name), hf = /hands-free/i.test(o.name);
+      const sub = hf ? "Hands-free · lower quality, for calls" : { headphones: "Headphones", tv: "Display", speaker: "Speaker" }[k];
+      return `<button class="out-r${o.on ? " on" : ""}" data-out="${esc(o.id)}"><span class="out-ic">${svg(k === "speaker" ? "speaker" : k)}</span>`
+        + `<span class="out-n"><b>${esc(outLabel(o.name))}</b><small>${esc(sub)}</small></span><span class="out-ck">${o.on ? svg("checkmark") : ""}</span></button>`;
+    }).join("");
+  }
+  function openOut() { buzz(); OUT.list = null; renderOut(); sheetOpen("#outsheet"); send({ a: "outputs" }); }
+  Hd.outputs = (m) => { OUT.list = m.list || []; renderOut(); };
+  $("#out-list").addEventListener("click", (e) => {
+    const r = e.target.closest("[data-out]"); if (!r || !OUT.list) return;
+    buzz(); OUT.list.forEach((o) => { o.on = o.id === r.dataset.out; }); renderOut();
+    send({ a: "output", id: r.dataset.out });
+    setTimeout(() => sheetClose("#outsheet"), 420);
+  });
+  ["#np-out", "#ccm-out"].forEach((s) => $(s).addEventListener("click", (e) => { e.stopPropagation(); openOut(); }));
+
+  /* =========================================================================
+     Control Center button editor
+     ========================================================================= */
+  const ICON_SET = ["star", "bubble", "gamepad", "globe", "folder", "gear", "pulse", "note", "headphones", "mic.slash", "camera", "snip",
+    "record", "film", "photo", "desktop", "windows", "clipboard", "keyboard", "textcursor", "link", "doc", "lock", "power",
+    "smile", "people", "car", "flag", "bolt", "flame", "chip", "gauge", "timer", "tv", "grid", "trophy"];
+  const ED = { lst: null, i: 0, d: null, apps: null, q: "", vals: {}, suppress: false, t: null, x: 0, y: 0 };
+  const iconFor = (n) => (/music|spotify|tidal|deezer|soundcloud/i.test(n) ? "note" : /discord|whatsapp|telegram|messenger|slack|teams|signal/i.test(n) ? "bubble"
+    : /chrome|edge|firefox|brave|opera|browser|arc\b/i.test(n) ? "globe" : /steam|epic|ea app|xbox|ubisoft|battle\.net|forza|game|riot|gog/i.test(n) ? "gamepad"
+    : /obs|record|capture|nvidia/i.test(n) ? "record" : /g-helper|armoury|afterburner|monitor/i.test(n) ? "gauge" : /explorer|files/i.test(n) ? "folder"
+    : /settings|control panel/i.test(n) ? "gear" : /code|studio|terminal|powershell|notepad/i.test(n) ? "doc" : /photo|lightroom|gallery/i.test(n) ? "photo"
+    : /zoom|meet|camera/i.test(n) ? "camera" : /claude|chatgpt|copilot/i.test(n) ? "smile" : "star");
+  function openTileEditor(lst, i) {
+    const cur = TL[lst][i];
+    ED.lst = lst; ED.i = i; ED.q = "";
+    const type = cur ? cur.type : lst === "apps" ? "app" : "keys";
+    ED.d = { label: cur ? cur.label : "", icon: cur ? cur.icon || "star" : "star", type, value: cur ? (cur.value || "") : "", pick: false, auto: !cur };
+    ED.vals = { [type]: ED.d.value };
+    ED.orig = cur ? (cur.cmd || cur.value || "") : "";
+    $("#te-label").value = ED.d.label;
+    $("#te-reset").hidden = !cur;
+    renderEd(); sheetOpen("#tilesheet");
+    if (!ED.apps) send({ a: "startapps" });
+  }
+  function renderEd() {
+    const d = ED.d;
+    $$("#te-type button").forEach((b) => b.classList.toggle("on", b.dataset.ty === d.type));
+    renderEdPrev();
+    $("#te-icons").innerHTML = ICON_SET.map((n) => `<button data-icn="${n}" class="${n === d.icon ? "on" : ""}" aria-label="${n}">${svg(n)}</button>`).join("");
+    renderEdVal();
+  }
+  function renderEdPrev() {
+    const d = ED.d, p = $("#te-prev");
+    p.className = `tile te-prev${ED.lst === "apps" ? " sc" : ""}`;
+    p.style.setProperty("--tc", TILE_COLS[ED.i % TILE_COLS.length]);
+    p.innerHTML = `<i>${svg(d.icon)}</i><span>${esc(d.label || "Button")}</span>`;
+  }
+  const ED_PH = { keys: "e.g. ctrl+shift+m", text: "Text to type on the PC", link: "e.g. youtube.com", run: "e.g. notepad, or C:\\Scripts\\backup.bat" };
+  const ED_NOTE = {
+    keys: "Join keys with +. Works with ctrl, shift, alt, win, a–z, 0–9, f1–f24, tab, esc, space, enter, arrows and printscreen.",
+    text: "Typed wherever your cursor is on the PC.", link: "Opens in your default browser.", run: "Runs like the Windows Run box (Win+R).",
+  };
+  function renderEdVal() {
+    const d = ED.d, box = $("#te-val");
+    if (d.type === "app") {
+      const curNote = !d.pick && ED.orig && !(ED.apps || []).some((a) => a.id === d.value) ? `<div class="te-cur">Opens <b>${esc(ED.d.label || "")}</b> · pick another app below</div>` : "";
+      box.innerHTML = `${curNote}<input class="tin" id="te-q" placeholder="Search apps on your PC" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(ED.q)}"><div class="te-apps" id="te-apps"></div>`;
+      renderEdApps();
+      return;
+    }
+    const field = d.type === "text"
+      ? `<textarea class="tin te-ta" id="te-v" placeholder="${esc(ED_PH.text)}" spellcheck="false">${esc(d.value)}</textarea>`
+      : `<input class="tin" id="te-v" placeholder="${esc(ED_PH[d.type])}" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(d.value)}">`;
+    const chips = d.type === "keys" ? `<div class="te-chips">${["win+shift+s", "ctrl+shift+esc", "win+alt+r", "win+v", "ctrl+shift+m", "alt+f4"].map((k) => `<button data-k="${k}">${k}</button>`).join("")}</div>` : "";
+    box.innerHTML = field + chips + `<div class="sheet-note">${ED_NOTE[d.type]}</div>`;
+  }
+  function renderEdApps() {
+    const box = $("#te-apps"); if (!box) return;
+    if (!ED.apps) { box.innerHTML = `<div class="te-empty">Loading apps from your PC…</div>`; return; }
+    const q = ED.q.trim().toLowerCase();
+    const list = ED.apps.filter((a) => !q || a.name.toLowerCase().includes(q)).slice(0, 100);
+    box.innerHTML = list.length ? list.map((a) => {
+      const on = a.id === ED.d.value;
+      return `<button class="te-app${on ? " on" : ""}" data-aid="${esc(a.id)}"><span class="te-ai" style="background:${hueOf(a.name)}">${esc([...a.name][0] || "?")}</span><b>${esc(a.name)}</b>${on ? svg("checkmark") : ""}</button>`;
+    }).join("") : `<div class="te-empty">No apps match “${esc(ED.q)}”</div>`;
+  }
+  Hd.startapps = (m) => { ED.apps = m.list || []; if (!$("#tilesheet").hidden && ED.d && ED.d.type === "app") renderEdApps(); };
+  $("#te-type").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ty]"); if (!b || b.dataset.ty === ED.d.type) return;
+    buzz(); ED.vals[ED.d.type] = ED.d.value;
+    ED.d.type = b.dataset.ty; ED.d.value = ED.vals[ED.d.type] || ""; ED.d.pick = false;
+    renderEd();
+  });
+  $("#te-icons").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-icn]"); if (!b) return;
+    buzz(); ED.d.icon = b.dataset.icn; ED.d.iconSet = true;
+    $$("#te-icons button").forEach((x) => x.classList.toggle("on", x === b)); renderEdPrev();
+  });
+  $("#te-label").addEventListener("input", (e) => { ED.d.label = e.target.value; ED.d.auto = false; renderEdPrev(); });
+  $("#te-val").addEventListener("input", (e) => {
+    if (e.target.id === "te-q") { ED.q = e.target.value; renderEdApps(); }
+    if (e.target.id === "te-v") ED.d.value = e.target.value;
+  });
+  $("#te-val").addEventListener("click", (e) => {
+    const k = e.target.closest("[data-k]");
+    if (k) { buzz(); ED.d.value = k.dataset.k; $("#te-v").value = k.dataset.k; return; }
+    const a = e.target.closest("[data-aid]"); if (!a) return;
+    buzz();
+    const app = ED.apps.find((x) => x.id === a.dataset.aid); if (!app) return;
+    ED.d.value = app.id; ED.d.pick = true;
+    if (ED.d.auto || !ED.d.label || !$("#te-label").value.trim() || ED.d.type === "app") {
+      ED.d.label = app.name.length > 22 ? app.name.split(/\s+/).slice(0, 2).join(" ").slice(0, 22) : app.name;
+      $("#te-label").value = ED.d.label; ED.d.auto = true;
+    }
+    if (!ED.d.iconSet) { ED.d.icon = iconFor(app.name); renderEd(); } else { renderEdPrev(); renderEdApps(); }
+  });
+  $("#te-cancel").addEventListener("click", () => sheetClose("#tilesheet"));
+  $("#te-reset").addEventListener("click", () => { buzz(); send({ a: "tile_reset", list: ED.lst, i: ED.i }); sheetClose("#tilesheet"); });
+  $("#te-save").addEventListener("click", () => {
+    const d = ED.d;
+    const keepApp = d.type === "app" && !d.pick && ED.orig && TL[ED.lst][ED.i] && TL[ED.lst][ED.i].type === "app";
+    if (!d.value.trim() && !keepApp) {
+      toast(d.type === "app" ? "Pick an app first" : d.type === "keys" ? "Type a shortcut first" : "It needs something to do", "xmark", true); return;
+    }
+    buzz();
+    const tile = { label: d.label.trim() || "Button", icon: d.icon, type: d.type, value: keepApp ? (TL[ED.lst][ED.i].value || ED.orig) : d.value.trim(), pick: d.pick };
+    if (keepApp && !TL[ED.lst][ED.i].value) { tile.value = ED.orig; }
+    TL[ED.lst][ED.i] = { ...(TL[ED.lst][ED.i] || {}), ...tile };
+    buildCC({ apps: TL.apps, macros: TL.macros });
+    send({ a: "tile_save", list: ED.lst, i: ED.i, tile });
+    sheetClose("#tilesheet");
+  });
+  // hold a button to edit it
+  document.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest("[data-tl]"); ED.suppress = false; if (!b) return;
+    ED.x = e.clientX; ED.y = e.clientY; clearTimeout(ED.t); b.classList.add("holding");
+    ED.t = setTimeout(() => { ED.t = null; b.classList.remove("holding"); ED.suppress = true; buzz(25); const [l, i] = b.dataset.tl.split(":"); openTileEditor(l, +i); }, 560);
+    ED.hb = b;
+  });
+  document.addEventListener("pointermove", (e) => { if (ED.t && Math.hypot(e.clientX - ED.x, e.clientY - ED.y) > 10) { clearTimeout(ED.t); ED.t = null; if (ED.hb) ED.hb.classList.remove("holding"); } });
+  ["pointerup", "pointercancel"].forEach((ev) => document.addEventListener(ev, () => { clearTimeout(ED.t); ED.t = null; if (ED.hb) ED.hb.classList.remove("holding"); }));
+  document.addEventListener("contextmenu", (e) => { if (e.target.closest("[data-tl]")) e.preventDefault(); });
+
+  /* =========================================================================
+     photos & files -> PC (lands in Downloads)
+     ========================================================================= */
+  const UP = { busy: false, last: null, urls: [] };
+  const fileIn = document.createElement("input"); fileIn.type = "file"; fileIn.multiple = true; fileIn.hidden = true; document.body.appendChild(fileIn);
+  fileIn.addEventListener("change", () => { if (fileIn.files.length) upload([...fileIn.files]); fileIn.value = ""; });
+  const pickFiles = () => { buzz(); fileIn.click(); };
+  $("#file-pick").addEventListener("click", (e) => { e.stopPropagation(); pickFiles(); });
+  $("#clip-files").addEventListener("click", () => { closeSheet(); setTimeout(pickFiles, 50); });
+  const fmtBytes = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
+  const lastDir = (d) => (d || "").split(/[\\/]/).filter(Boolean).slice(-1)[0] || "Downloads";
+  function upload(files) {
+    if (UP.busy) { toast("Still sending…", "xmark", true); return; }
+    UP.busy = true; UP.urls.forEach((u) => URL.revokeObjectURL(u)); UP.urls = [];
+    const total = files.reduce((n, f) => n + f.size, 0);
+    $("#up-h").textContent = files.length === 1 ? "Sending to PC" : `Sending ${files.length} items`;
+    $("#up-list").innerHTML = files.slice(0, 12).map((f) => {
+      let th = `<i>${svg(/^video\//.test(f.type) ? "film" : "doc")}</i>`;
+      if (/^image\//.test(f.type)) { const u = URL.createObjectURL(f); UP.urls.push(u); th = `<img src="${u}" alt="">`; }
+      return `<div class="up-it">${th}<span>${esc(f.name)}</span></div>`;
+    }).join("") + (files.length > 12 ? `<div class="up-it more"><i>+${files.length - 12}</i></div>` : "");
+    $("#up-fill").style.width = "0%"; $("#up-fill").parentNode.classList.remove("ok", "bad");
+    $("#up-st").textContent = `0 of ${fmtBytes(total)}`; $("#up-show").hidden = true; $("#up-done").textContent = "Hide";
+    sheetOpen("#upsheet");
+    const fd = new FormData(); files.forEach((f) => fd.append("f", f, f.name));
+    const x = new XMLHttpRequest();
+    x.open("POST", `/api/upload?k=${encodeURIComponent(TOKEN)}`);
+    x.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      $("#up-fill").style.width = `${(e.loaded / e.total * 100).toFixed(1)}%`;
+      $("#up-st").textContent = `${fmtBytes(Math.min(total, e.loaded))} of ${fmtBytes(total)}`;
+    };
+    const fail = () => {
+      UP.busy = false; $("#up-fill").parentNode.classList.add("bad");
+      $("#up-h").textContent = "Couldn't send"; $("#up-st").textContent = "Check the PC is awake and try again"; $("#up-done").textContent = "Close";
+    };
+    x.onload = () => {
+      let r = null; try { r = JSON.parse(x.responseText); } catch (e) {}
+      if (x.status !== 200 || !r || !r.ok) { fail(); return; }
+      UP.busy = false; UP.last = r.files[r.files.length - 1];
+      $("#up-fill").style.width = "100%"; $("#up-fill").parentNode.classList.add("ok");
+      $("#up-h").textContent = "Sent to PC";
+      $("#up-st").textContent = `${r.files.length} item${r.files.length === 1 ? "" : "s"} in ${lastDir(r.dir)}`;
+      $("#up-show").hidden = false; $("#up-done").textContent = "Done"; buzz(20);
+    };
+    x.onerror = fail;
+    x.send(fd);
+  }
+  $("#up-done").addEventListener("click", () => sheetClose("#upsheet"));
+  $("#up-show").addEventListener("click", () => { if (UP.last) send({ a: "reveal", name: UP.last }); buzz(); toast("Opened on PC", "check"); });
+  // drag photos in from another app (iPad split view / Stage Manager)
+  let dragN = 0;
+  const hasFiles = (e) => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes("Files");
+  document.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragN++; $("#drop").classList.add("on"); });
+  document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener("dragleave", () => { if (--dragN <= 0) { dragN = 0; $("#drop").classList.remove("on"); } });
+  document.addEventListener("drop", (e) => {
+    if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    e.preventDefault(); dragN = 0; $("#drop").classList.remove("on"); upload([...e.dataTransfer.files]);
   });
 
   /* =========================================================================

@@ -132,6 +132,7 @@
             <button class="tb big" data-media="toggle" aria-label="Play/Pause" id="np-pp"><i data-ic="play"></i></button>
             <button class="tb" data-media="next" aria-label="Next"><i data-ic="fwd"></i></button>
           </div>
+          <button class="np-out" id="np-out" aria-label="Audio output"><i id="np-out-ic"></i><span id="np-out-t">Output</span></button>
         </div>
         <div class="np-r">
           <div class="lyrics" id="lyrics"><div class="ly" id="ly"></div></div>
@@ -211,7 +212,7 @@
         <button class="tile cc-lock" data-sys="lock"><i data-ic="lock"></i><span>Lock</span></button>
 
         <div class="mod cc-clip" id="cc-clip">
-          <div class="mod-t"><i data-ic="clipboard"></i>Clipboard</div>
+          <div class="mod-t"><i data-ic="clipboard"></i>Clipboard<button class="mod-ic" id="file-pick" aria-label="Send photos or files to the PC"><i data-ic="paperclip"></i></button></div>
           <div class="clip-prev" id="clip-prev">Pull what you copied on the PC, or send text over.</div>
           <div class="clip-btns">
             <button class="pill" id="clip-pull"><i data-ic="down"></i>From PC</button>
@@ -220,6 +221,7 @@
         </div>
 
         <div class="mod cc-media" id="cc-media">
+          <button class="ccm-out" id="ccm-out" aria-label="Audio output"><i data-ic="airplay"></i></button>
           <div class="ccm-top">
             <div class="ccm-art"><img id="ccm-art" alt=""><i data-ic="note"></i></div>
             <div class="ccm-meta"><b id="ccm-title">Not Playing</b><span id="ccm-artist"></span></div>
@@ -449,6 +451,7 @@
     <textarea id="clip-text" placeholder="Type or paste text..." spellcheck="false"></textarea>
     <div class="sheet-row">
       <button class="pill" id="clip-paste"><i data-ic="clipboard"></i>Paste from phone</button>
+      <button class="pill" id="clip-files"><i data-ic="paperclip"></i>Photos &amp; files</button>
       <label class="sw"><input type="checkbox" id="clip-auto"><span class="sw-t"></span>Also paste on PC</label>
     </div>
   </div>
@@ -487,6 +490,45 @@
     <div class="sheet-note" id="car-note"></div>
   </div>
 </div>
+<!-- audio output picker -->
+<div id="outsheet" class="sheet" hidden>
+  <div class="sheet-card out-card">
+    <div class="sheet-h"><span></span><b>Audio Output</b><span></span></div>
+    <div class="out-list" id="out-list"></div>
+  </div>
+</div>
+
+<!-- Control Center button editor -->
+<div id="tilesheet" class="sheet" hidden>
+  <div class="sheet-card te-card">
+    <div class="sheet-h"><button class="link" id="te-cancel">Cancel</button><b>Edit Button</b><button class="link strong" id="te-save">Save</button></div>
+    <div class="te-top">
+      <div class="tile te-prev" id="te-prev"></div>
+      <div class="te-fields">
+        <input id="te-label" class="tin" maxlength="22" placeholder="Name" autocomplete="off">
+        <div class="seg" id="te-type">
+          <button data-ty="app">App</button><button data-ty="keys">Shortcut</button><button data-ty="text">Text</button><button data-ty="link">Link</button><button data-ty="run">Command</button>
+        </div>
+      </div>
+    </div>
+    <div class="te-val" id="te-val"></div>
+    <div class="te-sub">Icon</div>
+    <div class="te-icons" id="te-icons"></div>
+    <button class="link te-reset" id="te-reset">Reset to default</button>
+  </div>
+</div>
+
+<!-- sending files to the PC -->
+<div id="upsheet" class="sheet" hidden>
+  <div class="sheet-card up-card">
+    <div class="sheet-h"><span></span><b id="up-h">Sending to PC</b><button class="link strong" id="up-done">Hide</button></div>
+    <div class="up-list" id="up-list"></div>
+    <div class="up-bar"><i id="up-fill"></i></div>
+    <div class="up-foot"><span id="up-st"></span><button class="pill" id="up-show" hidden><i data-ic="folder"></i>Show on PC</button></div>
+  </div>
+</div>
+<div id="drop" class="drop"><div><i data-ic="up"></i><b>Drop to send to PC</b><span>Saved in your Downloads folder</span></div></div>
+
 <div id="toast" class="toast"><i id="toast-ic"></i><span id="toast-t"></span></div>
 
 <div id="offline" class="offline">

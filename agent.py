@@ -76,6 +76,8 @@ DEFAULT_CONFIG = {
     "photos_dir": "~/Pictures/DeskDeck",
     "lhm_url": "http://127.0.0.1:8085/data.json",
     "lyrics_offset": 0.3,
+    # where files sent from the phone/iPad land ("" = your Downloads folder)
+    "drop_dir": "",
     # word-by-word lyric timing from NetEase Cloud Music when it has the song (falls back to LRCLIB lines)
     "word_lyrics": True,
     # Forza Horizon Data Out: set the game's Data Out port to "listen".
@@ -673,6 +675,88 @@ def guess_rules(cmd: str):
     return None
 
 
+TILE_TYPES = ("app", "keys", "text", "link", "run")
+TILE_SLOTS = {"apps": 6, "macros": 4}
+
+
+def tile_type(t: dict) -> str:
+    typ = t.get("type")
+    if typ in TILE_TYPES:
+        return typ
+    return "app" if t.get("cmd") else "keys"
+
+
+def out_label(name: str) -> str:
+    """"Headphones (Danish's AirPods Pro)" -> "Danish's AirPods Pro", "SAMSUNG (NVIDIA High Def...)" -> "SAMSUNG"."""
+    m = re.match(r"^(?:Headphones|Headset|Earphones|Speakers?)\s*\((.+)\)$", name or "", re.I)
+    if m and not re.search(r"realtek|high definition|audio$", m.group(1), re.I):
+        return re.sub(r"\s*Hands-Free.*$", "", m.group(1))
+    return re.sub(r"\s*\(.*\)\s*$", "", name or "") or name
+
+
+def safe_filename(name: str) -> str:
+    name = re.split(r"[\\/]", name or "")[-1]
+    name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", name).strip(" .")
+    if not name:
+        name = "file"
+    stem, dot, ext = name.rpartition(".")
+    if dot and len(ext) <= 10:
+        return stem[:120] + "." + ext
+    return name[:130]
+
+
+def unique_path(folder: Path, name: str) -> Path:
+    p = folder / name
+    if not p.exists():
+        return p
+    stem, ext = os.path.splitext(name)
+    for i in range(2, 1000):
+        q = folder / f"{stem} ({i}){ext}"
+        if not q.exists():
+            return q
+    return folder / f"{stem} {secrets.token_hex(3)}{ext}"
+
+
+def downloads_dir() -> Path:
+    if IS_WIN:
+        try:
+            import winreg
+            k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders")
+            v, _ = winreg.QueryValueEx(k, "{374DE290-123F-4565-9164-39C4925E467B}")
+            p = Path(os.path.expandvars(v))
+            if p.is_dir():
+                return p
+        except Exception:
+            pass
+    return Path.home() / "Downloads"
+
+
+_IPOLICY = None
+
+
+def _policy_config():
+    """IPolicyConfig (undocumented but stable since Windows 7): the only way to change the default output."""
+    global _IPOLICY
+    import comtypes
+    from ctypes import c_int, c_void_p, c_wchar_p
+    from comtypes import COMMETHOD, GUID, HRESULT, IUnknown
+    if _IPOLICY is None:
+        def m(name, n):
+            return COMMETHOD([], HRESULT, name, *[(["in"], c_wchar_p if i == 0 else c_void_p, f"a{i}") for i in range(n)])
+
+        class IPolicyConfig(IUnknown):
+            _iid_ = GUID("{f8679f50-850a-41cf-9c72-430f290290c8}")
+            _methods_ = [
+                m("GetMixFormat", 2), m("GetDeviceFormat", 3), m("ResetDeviceFormat", 1), m("SetDeviceFormat", 3),
+                m("GetProcessingPeriod", 4), m("SetProcessingPeriod", 2), m("GetShareMode", 2), m("SetShareMode", 2),
+                m("GetPropertyValue", 4), m("SetPropertyValue", 4),
+                COMMETHOD([], HRESULT, "SetDefaultEndpoint", (["in"], c_wchar_p, "id"), (["in"], c_int, "role")),
+                COMMETHOD([], HRESULT, "SetEndpointVisibility", (["in"], c_wchar_p, "id"), (["in"], c_int, "vis")),
+            ]
+        _IPOLICY = IPolicyConfig
+    return comtypes.CoCreateInstance(GUID("{870af99c-171d-4f9e-af0d-e63df40c2bc9}"), _IPOLICY, comtypes.CLSCTX_ALL)
+
+
 # --------------------------------------------------------------------------------------
 # Hub - fan-out to connected phones
 # --------------------------------------------------------------------------------------
@@ -1170,6 +1254,75 @@ class WinPlatform:
 
     async def appv_set(self, v):
         await self._com(self._appv_set, v)
+
+    # ---- output picker (speakers / headphones / AirPods / TV)
+    def _outputs(self):
+        import comtypes
+        from pycaw.api.mmdeviceapi import IMMDeviceEnumerator
+        from pycaw.constants import CLSID_MMDeviceEnumerator
+        from pycaw.pycaw import AudioUtilities
+        en = comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator, comtypes.CLSCTX_INPROC_SERVER)
+        try:
+            cur = en.GetDefaultAudioEndpoint(0, 1).GetId()
+        except Exception:
+            cur = None
+        col = en.EnumAudioEndpoints(0, 1)          # render devices that are plugged in / connected
+        out = []
+        for i in range(col.GetCount()):
+            d = col.Item(i)
+            did = d.GetId()
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    name = AudioUtilities.CreateDevice(d).FriendlyName or "Output"
+            except Exception:
+                name = "Output"
+            out.append({"id": did, "name": name, "on": did == cur})
+        out.sort(key=lambda o: (not o["on"], o["name"].lower()))
+        return out
+
+    def _output_set(self, did):
+        pc = _policy_config()
+        for role in (0, 1, 2):                      # console, multimedia, communications
+            pc.SetDefaultEndpoint(did, role)
+
+    async def outputs(self):
+        return await self._com(self._outputs)
+
+    async def output_set(self, did):
+        await self._com(self._output_set, did)
+
+    # ---- Start menu apps, for picking what a Control Center button opens
+    def _start_apps(self):
+        now = time.time()
+        if getattr(self, "_sa", None) and now - self._sa[0] < 600:
+            return self._sa[1]
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                            "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress"],
+                           capture_output=True, timeout=20, creationflags=0x08000000)
+        items = json.loads(r.stdout.decode("utf-8", "replace") or "[]")
+        if isinstance(items, dict):
+            items = [items]
+        junk = re.compile(r"uninstall|readme|help|documentation|website|release notes|license|manual|\bfaq\b", re.I)
+        seen, out = set(), []
+        for it in items:
+            n, aid = (it.get("Name") or "").strip(), (it.get("AppID") or "").strip()
+            if not n or not aid or junk.search(n) or n.lower() in seen or aid.lower().startswith(("http:", "https:")):
+                continue
+            seen.add(n.lower())
+            out.append({"name": n, "id": aid})
+        out.sort(key=lambda x: x["name"].lower())
+        self._sa = (now, out)
+        return out
+
+    async def start_apps(self):
+        return await self._io(self._start_apps)
+
+    async def open_url(self, url):
+        await self._io(os.startfile, url)
+
+    async def reveal(self, path):
+        await self._io(lambda: subprocess.Popen(f'explorer /select,"{path}"', creationflags=0x08000000))
 
     # ---- media
     async def media_poll(self):
@@ -1700,7 +1853,8 @@ class DemoPlatform:
         return 18 + 14 * math.sin(t / 7) + random.random() * 6, int(2.1e9 + 3e8 * math.sin(t / 30))
 
     async def vol_state(self):
-        return dict(self.vol)
+        outs = await self.outputs()
+        return {**self.vol, "out": next((o["name"] for o in outs if o["on"]), "Speakers")}
 
     async def vol_set(self, v):
         self.vol["level"] = round(max(0.0, min(1.0, float(v))), 3)
@@ -1834,6 +1988,35 @@ class DemoPlatform:
 
     async def keys(self, combo):
         log.info("[demo] keys %s", combo)
+
+    async def outputs(self):
+        if not hasattr(self, "_outs"):
+            self._outs = [{"id": "spk", "name": "Speakers (Realtek(R) Audio)"},
+                          {"id": "pods", "name": "Headphones (Danish's AirPods Pro)"},
+                          {"id": "hdmi", "name": "SAMSUNG (NVIDIA High Definition Audio)"},
+                          {"id": "hs", "name": "Headset (Danish's AirPods Pro Hands-Free)"}]
+            self._out_cur = "spk"
+        return sorted([{**o, "on": o["id"] == self._out_cur} for o in self._outs], key=lambda o: (not o["on"], o["name"].lower()))
+
+    async def output_set(self, did):
+        await self.outputs()
+        self._out_cur = did
+        log.info("[demo] output -> %s", did)
+
+    async def start_apps(self):
+        return [{"name": n, "id": i} for n, i in (
+            ("Apple Music", "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App"), ("Discord", "com.squirrel.Discord.Discord"),
+            ("EA app", "EA.Desktop"), ("Forza Horizon 6", "Microsoft.ForzaHorizon6_8wekyb3d8bbwe!App"),
+            ("G-Helper", "C:\\Tools\\GHelper.exe"), ("Google Chrome", "Chrome"), ("NVIDIA app", "NVIDIA.App"),
+            ("Notepad", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"), ("OBS Studio", "OBS Studio"),
+            ("Spotify", "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify"), ("Steam", "Steam"),
+            ("Visual Studio Code", "Microsoft.VisualStudioCode"), ("WhatsApp", "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"))]
+
+    async def open_url(self, url):
+        log.info("[demo] open %s", url)
+
+    async def reveal(self, path):
+        log.info("[demo] reveal %s", path)
 
     async def text(self, s):
         log.info("[demo] type %r", s[:40])
@@ -2671,6 +2854,108 @@ class Engine:
             "fps": f and f.get("fps"), "ft": f and f.get("ft"),
             "avg": round(sum(h) / len(h)) if h else None, "min": fps_low(h),
         }, keep=False)
+
+    # ---------------- Control Center buttons (editable from the phone)
+    def tiles_payload(self):
+        keep = ("id", "label", "icon", "type", "value", "cmd")
+        out = {}
+        for lst, n in TILE_SLOTS.items():
+            out[lst] = [{**{k: t.get(k) for k in keep if t.get(k) is not None}, "type": tile_type(t)}
+                        for t in (self.cfg.get(lst) or [])[:n]]
+        return out
+
+    async def run_tile(self, t, ws):
+        P, typ = self.plat, tile_type(t)
+        val = str(t.get("value") or "")
+        if typ == "app":
+            res = await P.open_app({**t, "cmd": t.get("cmd") or val})
+            msg = f"Switched to {t.get('label')}" if res == "focused" else f"Opening {t.get('label')}"
+            await ws.send_str(json.dumps({"t": "toast", "msg": msg, "icon": "check"}))
+        elif typ == "keys":
+            await P.keys(val)
+        elif typ == "text":
+            await P.text(val)
+        elif typ == "link":
+            if not re.match(r"^[a-z][a-z0-9+.-]*:", val, re.I):
+                val = "https://" + val
+            await P.open_url(val)
+        elif typ == "run":
+            await P.launch(val)
+
+    async def tile_save(self, lst_name, i, tile):
+        if lst_name not in TILE_SLOTS or not 0 <= i < TILE_SLOTS[lst_name]:
+            return
+        lst = [dict(x) for x in (self.cfg.get(lst_name) or [])]
+        defaults = DEFAULT_CONFIG[lst_name]
+        while len(lst) <= i:
+            lst.append(dict(defaults[len(lst)]) if len(lst) < len(defaults) else
+                       {"id": "t" + secrets.token_hex(3), "label": "Button", "icon": "star", "type": "keys", "value": ""})
+        if tile is None:                               # back to the factory button
+            if i < len(defaults):
+                lst[i] = dict(defaults[i])
+        else:
+            typ = tile.get("type") if tile.get("type") in TILE_TYPES else "keys"
+            label = re.sub(r"\s+", " ", str(tile.get("label") or "")).strip()[:22] or "Button"
+            icon = re.sub(r"[^a-z0-9.]", "", str(tile.get("icon") or "star"))[:24] or "star"
+            val = str(tile.get("value") or "")[:600].strip()
+            old = lst[i]
+            same = tile_type(old) == typ and (val == (old.get("value") or "") or (typ == "app" and not tile.get("pick")))
+            new = {"id": old.get("id") if same and old.get("id") else "t" + secrets.token_hex(3),
+                   "label": label, "icon": icon, "type": typ, "value": val}
+            if typ == "app" and not tile.get("pick") and old.get("cmd") and same:
+                val = new["value"] = old.get("value") or ""
+                new["cmd"] = old["cmd"]
+                if old.get("match"):
+                    new["match"] = old["match"]
+            if typ == "app":
+                # picked from the Start menu: open it through the shell, so Store apps (Apple Music...) work too
+                new.setdefault("cmd", val)             # typed by hand: a command, path or URL scheme
+                if tile.get("pick"):
+                    new["cmd"] = f'"shell:AppsFolder\\{val}"'
+                    exe = re.findall(r"([^\\/]+\.exe)$", val, re.I)
+                    if exe:
+                        new["match"] = [{"exe": exe[0]}]
+            lst[i] = new
+        self.cfg[lst_name] = lst
+        await self._io(self._persist_cfg_key, lst_name, lst)
+        await self.hub.send("tiles", self.tiles_payload(), keep=False)
+
+    # ---------------- files sent from the phone / iPad
+    def drop_dir(self) -> Path:
+        d = (self.cfg.get("drop_dir") or "").strip()
+        return Path(os.path.expandvars(os.path.expanduser(d))) if d else downloads_dir()
+
+    async def upload_handler(self, request):
+        if not self.authed(request):
+            return web.Response(status=403, text="bad token")
+        dest = self.drop_dir()
+        await self._io(lambda: dest.mkdir(parents=True, exist_ok=True))
+        reader = await request.multipart()
+        saved, total = [], 0
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if not getattr(part, "filename", None):
+                continue
+            path = unique_path(dest, safe_filename(part.filename))
+            f = await self._io(open, path, "wb")
+            try:
+                while True:
+                    chunk = await part.read_chunk(1 << 20)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    await self._io(f.write, chunk)
+            except Exception:
+                f.close()
+                await self._io(lambda: path.unlink(missing_ok=True))
+                raise
+            f.close()
+            saved.append(path.name)
+        if saved:
+            log.info("Received %d file(s) from %s -> %s", len(saved), request.remote, dest)
+        return web.json_response({"ok": True, "files": saved, "bytes": total, "dir": str(dest)})
 
     # ---------------- notifications, webhooks, Siri Shortcuts
     @staticmethod
@@ -3616,8 +3901,7 @@ code{{background:#1c1c1e;padding:2px 6px;border-radius:6px}}</style></head><body
         hello = {
             "t": "hello", "demo": self.demo, "fav": self.cfg.get("f1_favourite"), "ver": VERSION,
             "lyoff": float(self.cfg.get("lyrics_offset", 0.3) or 0),
-            "apps": [{k: a.get(k) for k in ("id", "label", "icon")} for a in self.cfg.get("apps", [])],
-            "macros": [{k: a.get(k) for k in ("id", "label", "icon")} for a in self.cfg.get("macros", [])],
+            **self.tiles_payload(),
             "hook": {"key": self.cfg.get("hook_key"), "lan": self.lan_ip(), "port": self.cfg.get("port")},
             "forza": {"port": (self.cfg.get("forza") or {}).get("listen"),
                       "auto": (self.cfg.get("forza") or {}).get("auto_page", True)},
@@ -3654,6 +3938,38 @@ code{{background:#1c1c1e;padding:2px 6px;border-radius:6px}}</style></head><body
             elif m.get("mute"):
                 await P.vol_mute()
             await self.push_volume()
+        elif a == "outputs":
+            await ws.send_str(json.dumps({"t": "outputs", "list": await P.outputs()}))
+        elif a == "output":
+            await P.output_set(str(m.get("id", "")))
+            await asyncio.sleep(0.25)
+            lst = await P.outputs()
+            await ws.send_str(json.dumps({"t": "outputs", "list": lst}))
+            await self.push_volume()
+            cur = next((o["name"] for o in lst if o["on"]), None)
+            if cur:
+                await ws.send_str(json.dumps({"t": "toast", "msg": out_label(cur), "icon": "check"}))
+        elif a == "tile":
+            lst = self.cfg.get(m.get("list"), []) if m.get("list") in TILE_SLOTS else []
+            i = int(m.get("i", -1))
+            if 0 <= i < len(lst):
+                await self.run_tile(lst[i], ws)
+        elif a == "tile_save":
+            await self.tile_save(m.get("list"), int(m.get("i", -1)), m.get("tile") or {})
+        elif a == "tile_reset":
+            await self.tile_save(m.get("list"), int(m.get("i", -1)), None)
+        elif a == "startapps":
+            try:
+                lst = await P.start_apps()
+            except Exception as e:
+                log.info("start apps: %s", e)
+                lst = []
+            await ws.send_str(json.dumps({"t": "startapps", "list": lst}))
+        elif a == "reveal":
+            name = safe_filename(str(m.get("name", "")))
+            p = self.drop_dir() / name
+            if p.exists():
+                await P.reveal(str(p))
         elif a == "procs":   # the Health page is open: keep sampling for a bit
             self._procs_on = time.monotonic() + 15
             if m.get("now"):
@@ -3835,6 +4151,7 @@ def build_app(engine: Engine) -> web.Application:
         app.router.add_route("GET", path, h)
         app.router.add_route("POST", path, h)
     app.router.add_get("/photo/{i}", engine.photo_handler)
+    app.router.add_post("/api/upload", engine.upload_handler)
     app.router.add_get("/manifest.webmanifest", manifest)
     app.router.add_static("/s/", WEB, show_index=False)
     app.on_startup.append(engine.start)
