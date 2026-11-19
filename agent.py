@@ -972,7 +972,7 @@ class F1Live:
             neg = await r.json(content_type=None)
         tok = neg.get("connectionToken") or neg.get("connectionId")
         wsu = re.sub(r"^http", "ws", base) + "?id=" + urllib.parse.quote(tok or "")
-        async with http.ws_connect(wsu, headers=hdr, heartbeat=None, max_msg_size=0, timeout=20) as ws:
+        async with http.ws_connect(wsu, headers=hdr, heartbeat=None, max_msg_size=0) as ws:
             await ws.send_str(json.dumps({"protocol": "json", "version": 1}) + self.RS)
             await ws.send_str(json.dumps({"type": 1, "invocationId": "1", "target": "Subscribe", "arguments": [F1_TOPICS]}) + self.RS)
             log.info("F1 live timing connected")
@@ -1221,8 +1221,12 @@ class DiscordRPC:
             data.update(grant_type="refresh_token", refresh_token=refresh)
         async with self.eng.http.post("https://discord.com/api/oauth2/token", data=data) as r:
             js = await r.json(content_type=None)
-            if r.status != 200 or "access_token" not in js:
-                raise RuntimeError(f"token: {js.get('error_description') or js.get('error') or r.status}")
+        if "access_token" not in js and code:          # some apps have no redirect set: try without it
+            data.pop("redirect_uri", None)
+            async with self.eng.http.post("https://discord.com/api/oauth2/token", data=data) as r:
+                js = await r.json(content_type=None)
+        if "access_token" not in js:
+            raise RuntimeError(f"token: {js.get('error_description') or js.get('error') or 'refused'}")
         js["expires_at"] = time.time() + float(js.get("expires_in", 604800)) - 120
         self._save_tokens(js)
         return js
