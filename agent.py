@@ -32,6 +32,7 @@ import struct
 import subprocess
 import threading
 import time
+import urllib.parse
 import warnings
 import zlib
 from concurrent.futures import ThreadPoolExecutor
@@ -809,6 +810,299 @@ def to_jpeg(data: bytes, size: int = 480):
         out = io.BytesIO()
         im.save(out, "JPEG", quality=80)
         return out.getvalue()
+
+
+# --------------------------------------------------------------------------------------
+# F1 live timing (the feed the official app uses: SignalR Core, no login needed for timing)
+# --------------------------------------------------------------------------------------
+F1_SESS_DUR = {"Practice 1": 3600, "Practice 2": 3600, "Practice 3": 3600, "Sprint Qualifying": 2700, "Sprint Shootout": 2700,
+               "Sprint": 3600, "Qualifying": 4500, "Race": 9000}
+F1_TOPICS = ["Heartbeat", "DriverList", "TimingData", "TimingAppData", "TimingStats", "LapCount", "TrackStatus", "SessionInfo",
+             "SessionStatus", "ExtrapolatedClock", "RaceControlMessages", "WeatherData"]
+
+
+def f1_merge(base, delta):
+    """Apply a live timing delta: dicts merge, lists can be patched by index ("3": {...}), "_deleted" removes keys."""
+    if isinstance(delta, dict):
+        if isinstance(base, list):
+            base = {str(i): v for i, v in enumerate(base)}
+        if not isinstance(base, dict):
+            base = {}
+        for k, v in delta.items():
+            if k == "_deleted":
+                for d in v or []:
+                    base.pop(str(d), None)
+                continue
+            base[k] = f1_merge(base.get(k), v)
+        return base
+    return delta
+
+
+def _seq(x):
+    if isinstance(x, list):
+        return x
+    if isinstance(x, dict):
+        return [x[k] for k in sorted(x, key=lambda s: int(s) if str(s).isdigit() else 1e9)]
+    return []
+
+
+def f1_payload(st: dict) -> dict:
+    info = st.get("SessionInfo") or {}
+    meet = info.get("Meeting") or {}
+    typ = info.get("Type") or ""
+    name = info.get("Name") or typ
+    drivers = st.get("DriverList") or {}
+    tdat = st.get("TimingData") or {}
+    lines = tdat.get("Lines") or {}
+    app = (st.get("TimingAppData") or {}).get("Lines") or {}
+    part = int(tdat.get("SessionPart") or 0)
+    race = typ == "Race" or name in ("Race", "Sprint")
+    rows = []
+    for num, ln in lines.items():
+        if not isinstance(ln, dict):
+            continue
+        d = drivers.get(num) if isinstance(drivers.get(num), dict) else {}
+        stints = _seq((app.get(num) or {}).get("Stints"))
+        cur = stints[-1] if stints else {}
+        last = ln.get("LastLapTime") or {}
+        best = ln.get("BestLapTime") or {}
+        gap = ""
+        if race:
+            gap = ln.get("GapToLeader") or ""
+            itv = (ln.get("IntervalToPositionAhead") or {}).get("Value") or ""
+        else:
+            stats = _seq(ln.get("Stats"))
+            bl = _seq(ln.get("BestLapTimes"))
+            if part and len(stats) >= part:
+                gap = (stats[part - 1] or {}).get("TimeDiffToFastest") or ""
+                itv = (stats[part - 1] or {}).get("TimeDiffToPositionAhead") or ""
+            else:
+                gap = ln.get("TimeDiffToFastest") or ""
+                itv = ln.get("TimeDiffToPositionAhead") or ""
+            if part and len(bl) >= part and (bl[part - 1] or {}).get("Value"):
+                best = bl[part - 1]
+        try:
+            pos = int(ln.get("Position") or ln.get("Line") or 99)
+        except ValueError:
+            pos = 99
+        age = cur.get("TotalLaps")
+        rows.append({
+            "n": num, "pos": pos, "tla": d.get("Tla") or num, "name": d.get("LastName") or d.get("BroadcastName") or "",
+            "col": "#" + str(d.get("TeamColour") or "888888").lstrip("#"),
+            "gap": str(gap), "int": str(itv), "laps": ln.get("NumberOfLaps"),
+            "last": last.get("Value") or "", "lf": 2 if last.get("OverallFastest") else 1 if last.get("PersonalFastest") else 0,
+            "best": best.get("Value") or "", "bf": 2 if best.get("OverallFastest") else 0,
+            "tyre": str(cur.get("Compound") or "").upper()[:1] if cur.get("Compound") not in (None, "UNKNOWN") else "",
+            "age": age if isinstance(age, int) else None, "new": str(cur.get("New")).lower() == "true",
+            "pits": ln.get("NumberOfPitStops") or 0, "pit": bool(ln.get("InPit")), "pitout": bool(ln.get("PitOut")),
+            "out": bool(ln.get("Retired") or ln.get("Stopped")), "ko": bool(ln.get("KnockedOut")),
+        })
+    rows.sort(key=lambda r: r["pos"])
+    clock = st.get("ExtrapolatedClock") or {}
+    lap = st.get("LapCount") or {}
+    ts = st.get("TrackStatus") or {}
+    wx = st.get("WeatherData") or {}
+    msgs = _seq((st.get("RaceControlMessages") or {}).get("Messages"))[-6:][::-1]
+    return {
+        "on": True, "gp": meet.get("Name") or "", "circuit": (meet.get("Circuit") or {}).get("ShortName") or meet.get("Location") or "",
+        "sess": name, "race": race, "part": part, "status": (st.get("SessionStatus") or {}).get("Status") or "",
+        "lap": lap.get("CurrentLap"), "laps": lap.get("TotalLaps"),
+        "clock": {"utc": clock.get("Utc"), "rem": clock.get("Remaining"), "run": bool(clock.get("Extrapolating"))},
+        "track": str(ts.get("Status") or "1"), "trackMsg": ts.get("Message") or "",
+        "wx": {"air": wx.get("AirTemp"), "track": wx.get("TrackTemp"), "rain": str(wx.get("Rainfall") or "0") not in ("0", "False", "false"),
+               "hum": wx.get("Humidity"), "wind": wx.get("WindSpeed")},
+        "rc": [{"utc": m.get("Utc"), "lap": m.get("Lap"), "cat": m.get("Category"), "flag": m.get("Flag") or "",
+                "msg": m.get("Message") or ""} for m in msgs if isinstance(m, dict)],
+        "rows": rows,
+    }
+
+
+class F1Live:
+    BASE = "livetiming.formula1.com/signalrcore"
+    RS = "\x1e"
+
+    def __init__(self, eng: "Engine"):
+        self.eng = eng
+        self.st: dict = {}
+        self.on = False
+        self._sent = 0.0
+        self._dirty = False
+
+    def window(self):
+        """Only connect around an actual session from the calendar (saves the feed from us)."""
+        f1 = self.eng.hub.state.get("f1") or {}
+        nxt = f1.get("next") or {}
+        now = time.time()
+        for s in nxt.get("sessions") or []:
+            ts = s.get("ts") or 0
+            if ts - 20 * 60 <= now <= ts + F1_SESS_DUR.get(s.get("k"), 7200) + 40 * 60:
+                return True
+        return False
+
+    async def run(self):
+        await asyncio.sleep(8)
+        while True:
+            if not self.eng.cfg.get("f1_live", True) or not (self.window() or self.eng.cfg.get("f1_live_always")):
+                await asyncio.sleep(60)
+                continue
+            try:
+                await self.session()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.info("F1 live timing: %s", e)
+            if self.on:
+                self.on = False
+                await self.eng.hub.send("f1live", {"on": False})
+            await asyncio.sleep(30)
+
+    async def session(self):
+        http = self.eng.http
+        base = self.eng.cfg.get("f1_live_url") or ("https://" + self.BASE)
+        hdr = {"User-Agent": UA}
+        try:
+            async with http.options(base + "/negotiate", headers=hdr) as r:
+                await r.read()
+        except Exception as e:
+            log.debug("f1 pre-negotiate: %s", e)
+        async with http.post(base + "/negotiate?negotiateVersion=1", headers=hdr) as r:
+            r.raise_for_status()
+            neg = await r.json(content_type=None)
+        tok = neg.get("connectionToken") or neg.get("connectionId")
+        wsu = re.sub(r"^http", "ws", base) + "?id=" + urllib.parse.quote(tok or "")
+        async with http.ws_connect(wsu, headers=hdr, heartbeat=None, max_msg_size=0, timeout=20) as ws:
+            await ws.send_str(json.dumps({"protocol": "json", "version": 1}) + self.RS)
+            await ws.send_str(json.dumps({"type": 1, "invocationId": "1", "target": "Subscribe", "arguments": [F1_TOPICS]}) + self.RS)
+            log.info("F1 live timing connected")
+            self.st = {}
+            pinger = asyncio.create_task(self._ping(ws))
+            try:
+                last_rx = time.monotonic()
+                while True:
+                    try:
+                        msg = await ws.receive(timeout=40)
+                    except asyncio.TimeoutError:
+                        raise ConnectionError("feed went quiet")
+                    if msg.type in (WSMsgType.CLOSED, WSMsgType.CLOSE, WSMsgType.ERROR):
+                        raise ConnectionError("feed closed")
+                    if msg.type != WSMsgType.TEXT:
+                        continue
+                    last_rx = time.monotonic()
+                    for part in msg.data.split(self.RS):
+                        if part.strip():
+                            await self._handle(json.loads(part))
+                    if self._dirty and time.monotonic() - self._sent > 1.0:
+                        await self._publish()
+                    if not self.window() and not self.eng.cfg.get("f1_live_always") and \
+                            (self.st.get("SessionStatus") or {}).get("Status") in ("Finalised", "Ends", "Inactive"):
+                        break
+            finally:
+                pinger.cancel()
+
+    async def _ping(self, ws):
+        while True:
+            await asyncio.sleep(15)
+            await ws.send_str('{"type":6}' + self.RS)
+            if self._dirty:
+                await self._publish()
+
+    async def _handle(self, m):
+        t = m.get("type")
+        if t == 1 and m.get("target") == "feed":
+            args = m.get("arguments") or []
+            if len(args) >= 2 and isinstance(args[0], str) and not args[0].endswith(".z"):
+                self.st[args[0]] = f1_merge(self.st.get(args[0]), args[1])
+                self._dirty = True
+        elif t == 3 and m.get("invocationId") == "1":
+            res = m.get("result") or {}
+            for k, v in res.items():
+                if not k.endswith(".z"):
+                    self.st[k] = v
+            self._dirty = True
+            if m.get("error"):
+                log.info("F1 subscribe: %s", m.get("error"))
+        elif t == 7:
+            raise ConnectionError(m.get("error") or "closed by server")
+
+    async def _publish(self):
+        self._dirty = False
+        self._sent = time.monotonic()
+        if not self.st.get("TimingData") and not self.st.get("SessionInfo"):
+            return
+        self.on = True
+        await self.eng.hub.send("f1live", f1_payload(self.st))
+
+
+class DemoF1Live(F1Live):
+    GRID = [("4", "NOR", "Norris", "FF8000"), ("81", "PIA", "Piastri", "FF8000"), ("1", "VER", "Verstappen", "3671C6"),
+            ("6", "HAD", "Hadjar", "3671C6"), ("16", "LEC", "Leclerc", "E8002D"), ("44", "HAM", "Hamilton", "E8002D"),
+            ("63", "RUS", "Russell", "27F4D2"), ("12", "ANT", "Antonelli", "27F4D2"), ("55", "SAI", "Sainz", "64C4FF"),
+            ("23", "ALB", "Albon", "64C4FF"), ("14", "ALO", "Alonso", "229971"), ("18", "STR", "Stroll", "229971"),
+            ("10", "GAS", "Gasly", "0093CC"), ("43", "COL", "Colapinto", "0093CC"), ("31", "OCO", "Ocon", "B6BABD"),
+            ("87", "BEA", "Bearman", "B6BABD"), ("27", "HUL", "Hulkenberg", "BB0A30"), ("5", "BOR", "Bortoleto", "BB0A30"),
+            ("30", "LAW", "Lawson", "6692FF"), ("41", "LIN", "Lindblad", "6692FF"), ("11", "PER", "Perez", "AAAAAD"),
+            ("77", "BOT", "Bottas", "AAAAAD")]
+
+    async def run(self):
+        rnd = random.Random(7)
+        order = [g[0] for g in self.GRID]
+        rnd.shuffle(order)
+        gaps = {n: i * 1.6 + rnd.random() for i, n in enumerate(order)}
+        tyre = {n: [rnd.choice("MH"), rnd.randint(8, 22)] for n in order}
+        pits = {n: 0 for n in order}
+        best = {n: 999.0 for n in order}
+        lap, total, track, rc = 23, 50, "1", []
+        drv = {n: {"RacingNumber": n, "Tla": t, "LastName": ln, "TeamColour": c} for n, t, ln, c in self.GRID}
+        self.on = True
+        k = 0
+        while True:
+            k += 1
+            if k % 4 == 0:
+                lap = min(total, lap + 1)
+                for n in order:
+                    tyre[n][1] += 1
+            # small gap changes, the odd overtake and pit stop
+            for n in order[1:]:
+                gaps[n] = max(0.2, gaps[n] + rnd.uniform(-0.35, 0.3))
+            if rnd.random() < 0.18:
+                i = rnd.randint(1, len(order) - 2)
+                order[i], order[i + 1] = order[i + 1], order[i]
+                gaps[order[i]], gaps[order[i + 1]] = sorted([gaps[order[i]], gaps[order[i + 1]]])
+            pit = None
+            if rnd.random() < 0.08:
+                pit = rnd.choice(order[3:])
+                pits[pit] += 1
+                tyre[pit] = [rnd.choice("HM"), 0]
+            if k % 23 == 0:
+                track = {"1": "4", "4": "1"}[track] if track in ("1", "4") else "1"
+                rc.append({"Utc": dt.datetime.utcnow().isoformat() + "Z", "Lap": lap, "Category": "SafetyCar" if track == "4" else "Flag",
+                           "Flag": "" if track == "4" else "GREEN", "Message": "SAFETY CAR DEPLOYED" if track == "4" else "TRACK CLEAR"})
+            if k % 9 == 0:
+                n = rnd.choice(order)
+                rc.append({"Utc": dt.datetime.utcnow().isoformat() + "Z", "Lap": lap, "Category": "Other", "Flag": "",
+                           "Message": f"CAR {n} ({drv[n]['Tla']}) TIME 1:{rnd.randint(30, 33)}.{rnd.randint(100, 999)} DELETED - TRACK LIMITS AT TURN {rnd.randint(1, 17)}"})
+            lines = {}
+            gl = sorted(order, key=lambda n: order.index(n))
+            lead = 0.0
+            for i, n in enumerate(gl):
+                lt = 92.0 + rnd.random() * 1.6
+                pf = lt < best[n]
+                best[n] = min(best[n], lt)
+                cum = sum(gaps[x] for x in gl[1:i + 1]) / 3 if i else 0.0
+                lines[n] = {"Position": str(i + 1), "Line": i + 1, "NumberOfLaps": lap, "NumberOfPitStops": pits[n], "InPit": n == pit,
+                            "GapToLeader": f"LAP {lap}" if i == 0 else f"+{cum + lead:.3f}",
+                            "IntervalToPositionAhead": {"Value": f"LAP {lap}" if i == 0 else f"+{gaps[n] / 3:.3f}"},
+                            "LastLapTime": {"Value": f"1:{lt - 60:06.3f}", "PersonalFastest": pf, "OverallFastest": pf and lt <= min(best.values())},
+                            "BestLapTime": {"Value": f"1:{best[n] - 60:06.3f}"}}
+            st = {"SessionInfo": {"Meeting": {"Name": "Qatar Grand Prix", "Circuit": {"ShortName": "Lusail"}}, "Type": "Race", "Name": "Race"},
+                  "SessionStatus": {"Status": "Started"}, "DriverList": drv, "TimingData": {"Lines": lines},
+                  "TimingAppData": {"Lines": {n: {"Stints": [{"Compound": {"S": "SOFT", "M": "MEDIUM", "H": "HARD"}[tyre[n][0]],
+                                                              "TotalLaps": tyre[n][1], "New": "true"}]} for n in order}},
+                  "LapCount": {"CurrentLap": lap, "TotalLaps": total}, "TrackStatus": {"Status": track},
+                  "WeatherData": {"AirTemp": "24.8", "TrackTemp": "29.6", "Rainfall": "0", "Humidity": "58.0", "WindSpeed": "2.1"},
+                  "RaceControlMessages": {"Messages": rc[-8:]}}
+            await self.eng.hub.send("f1live", f1_payload(st))
+            await asyncio.sleep(2)
 
 
 class DiscordRPC:
@@ -2777,6 +3071,7 @@ class Engine:
         self._caps: dict = {}      # capture id -> (path, kind)
         self._thumbs: dict = {}
         self.discord = DemoDiscord(self) if demo else (DiscordRPC(self) if IS_WIN else None)
+        self.f1live = None
         self._meet_since = None
         self._call_title = None
         self._rules_at = 0.0
@@ -2843,6 +3138,9 @@ class Engine:
         ]
         if self.discord:
             self.tasks.append(asyncio.create_task(self.discord.run()))
+        if not self.demo or self.cfg.get("_demo_f1"):
+            self.f1live = DemoF1Live(self) if self.demo else F1Live(self)
+            self.tasks.append(asyncio.create_task(self.f1live.run()))
         if self.cfg.get("adb_reverse") and shutil.which("adb"):
             loops.append((self.tick_adb, 10))
         for fn, every in loops:
@@ -4777,6 +5075,7 @@ def main():
     ap.add_argument("--demo", action="store_true", help="fake data, runs on any OS")
     ap.add_argument("--demo-forza", action="store_true", help="fake Forza telemetry")
     ap.add_argument("--demo-game", action="store_true", help="pretend a game is running (Gaming page)")
+    ap.add_argument("--demo-f1", action="store_true", help="pretend an F1 race is live (F1 page)")
     ap.add_argument("--port", type=int)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
@@ -4790,6 +5089,8 @@ def main():
     if not demo and not IS_WIN:
         print("! Real mode needs Windows - starting in demo mode.")
         demo = True
+    if args.demo_f1:
+        cfg["_demo_f1"] = True
     engine = Engine(cfg, demo, args.demo_forza, args.demo_game)
     banner(cfg, demo)
     try:

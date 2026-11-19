@@ -549,6 +549,123 @@
   }
   const fmtSessT = (ts) => { const d = new Date(ts * 1000); return H24 ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? "AM" : "PM"}`; };
   Hd.f1 = (m) => { S.f1 = m; renderF1(); renderClockSub(); };
+
+  /* =========================================================================
+     F1 live timing (timing tower, gaps, tyres, lap / clock, flags)
+     ========================================================================= */
+  const F1L = { d: null, gapMode: LS.get("f1gap", "int"), els: {}, logo: null };
+  const TRACK = { 1: ["Track Clear", "g"], 2: ["Yellow Flag", "y"], 3: ["", "g"], 4: ["Safety Car", "sc"], 5: ["Red Flag", "r"], 6: ["Virtual Safety Car", "sc"], 7: ["VSC Ending", "y"] };
+  const TYRE_C = { S: "#ff453a", M: "#ffd60a", H: "#f2f2f7", I: "#30d158", W: "#0a84ff" };
+  const favCode = () => { const f = S.f1, id = (f && f.fav) || (S.hello && S.hello.fav); const x = f && (f.standings || []).find((s) => s.id === id); return x ? x.code : null; };
+  const isLap = (s) => /^LAP\s*\d+/i.test(s || "");
+  function gapTxt(r, race) {
+    if (r.out) return "Out";
+    if (!race) return r.pos === 1 ? (r.best ? "Fastest" : "") : r.gap || "";
+    const v = F1L.gapMode === "int" ? r.int : r.gap;
+    if (r.pos === 1 || isLap(v)) return "Leader";
+    const m = /^(\d+)\s*L/i.exec(v || "");
+    return m ? `+${m[1]} Lap${m[1] === "1" ? "" : "s"}` : v || "";
+  }
+  function f1Logo() {
+    if (F1L.logo !== null) return;
+    F1L.logo = false;
+    const img = $("#f1l-logo"), tries = ["/s/img/f1-logo.svg", "/s/img/f1-logo.png"];
+    const next = () => { const u = tries.shift(); if (!u) return; img.onload = () => { img.hidden = false; $("#f1l-mark").hidden = true; F1L.logo = true; }; img.onerror = next; img.src = u; };
+    next();
+  }
+  Hd.f1live = (m) => {
+    const was = !!(F1L.d && F1L.d.on);
+    F1L.d = m;
+    $("#p-f1").classList.toggle("live", !!m.on);
+    if (m.on && !was) { f1Logo(); F1L.els = {}; $("#f1l-rows").innerHTML = ""; }
+    if (pid === "f1" && m.on) renderF1Live();
+    islandUpdate();
+  };
+  function f1ClockLeft() {
+    const c = F1L.d && F1L.d.clock; if (!c || !c.rem) return null;
+    const p = c.rem.split(":").map(Number); let left = (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0);
+    if (c.run && c.utc) left -= Math.max(0, (Date.now() - Date.parse(c.utc)) / 1000);
+    return Math.max(0, left);
+  }
+  const fmtClock = (s) => (s >= 3600 ? `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(Math.floor(s % 60))}` : `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`);
+  function renderF1Big() {
+    const d = F1L.d; if (!d || !d.on) return;
+    const big = $("#f1l-big");
+    if (d.race && d.lap) { const h = `<small>Lap</small><b>${d.lap}</b><span>/${d.laps || "--"}</span>`; if (big.dataset.h !== h) { big.dataset.h = h; big.innerHTML = h; } return; }
+    const left = f1ClockLeft();
+    const h = `<small>${d.status === "Finished" || d.status === "Finalised" ? "Finished" : "Remaining"}</small><b>${left == null ? "--:--" : fmtClock(left)}</b>`;
+    if (big.dataset.h !== h) { big.dataset.h = h; big.innerHTML = h; }
+  }
+  function renderF1Live() {
+    const d = F1L.d; if (!d || !d.on) return;
+    const fin = ["Finished", "Finalised", "Ends"].includes(d.status);
+    setTxt($("#f1l-gp"), d.gp || "Formula 1");
+    setTxt($("#f1l-ses"), `${d.sess || ""}${!d.race && d.part && /qualif|shootout/i.test(d.sess) ? ` · ${/sprint|shootout/i.test(d.sess) ? "SQ" : "Q"}${d.part}` : ""}${d.circuit ? ` · ${d.circuit}` : ""}`);
+    renderF1Big();
+    const [tt, tc] = fin ? ["Chequered Flag", "ch"] : TRACK[d.track] || TRACK[1];
+    const fl = $("#f1l-flag"); fl.className = `f1l-flag ${tc}`; setTxt(fl, tt || "Track Clear");
+    $("#f1l-head").dataset.flag = fin ? "ch" : tc;
+    $("#f1l-gh").textContent = d.race ? (F1L.gapMode === "int" ? "Interval" : "Leader") : "Gap";
+    $("#f1l-lh").textContent = d.race ? "Last lap" : "Best lap";
+    // tower: keyed rows that slide when positions change
+    const box = $("#f1l-rows"), rows = d.rows || [], fav = favCode();
+    const n = Math.max(rows.length, 1), rp = remPx();
+    const rh = Math.max(1.95 * rp, Math.min(3.4 * rp, box.clientHeight / n));
+    box.style.setProperty("--rh", `${rh.toFixed(1)}px`);
+    box.style.height = "";
+    $(".f1l-rows-in", box) || (box.innerHTML = `<div class="f1l-rows-in"></div>`);
+    const inner = $(".f1l-rows-in", box); inner.style.height = `${(rh * rows.length).toFixed(0)}px`;
+    const seen = new Set();
+    rows.forEach((r, i) => {
+      seen.add(r.n);
+      let el = F1L.els[r.n];
+      if (!el) {
+        el = document.createElement("div"); el.className = "f1r";
+        el.innerHTML = `<span class="c-pos"></span><span class="f1r-bar"></span><span class="c-drv"><b></b><small></small></span><span class="c-gap"></span><span class="c-lap"></span><span class="c-ty"><i class="ty"></i><small></small></span><span class="f1r-pit"></span>`;
+        el.style.transform = `translateY(${(i * rh).toFixed(1)}px)`;
+        inner.appendChild(el); F1L.els[r.n] = el;
+      }
+      el.style.transform = `translateY(${(i * rh).toFixed(1)}px)`;
+      el.classList.toggle("fav", r.tla === fav);
+      el.classList.toggle("dim", !!(r.out || r.ko));
+      const q = (s) => el.querySelector(s);
+      setTxt(q(".c-pos"), String(r.pos < 99 ? r.pos : "–"));
+      q(".f1r-bar").style.background = r.col;
+      setTxt(q(".c-drv b"), r.tla); setTxt(q(".c-drv small"), r.name || "");
+      setTxt(q(".c-gap"), gapTxt(r, d.race));
+      const lap = d.race ? r.last : r.best, lf = d.race ? r.lf : r.bf;
+      const lc = q(".c-lap"); setTxt(lc, lap || ""); lc.dataset.f = String(lf || 0);
+      const ty = q(".ty"); const tl = r.tyre || "";
+      if (ty.dataset.t !== tl) { ty.dataset.t = tl; ty.textContent = tl; ty.style.setProperty("--tc", TYRE_C[tl] || "#8e8e93"); ty.hidden = !tl; }
+      ty.classList.toggle("used", tl && !r.new);
+      setTxt(q(".c-ty small"), r.age != null && tl ? String(r.age) : "");
+      const pit = r.pit ? "PIT" : r.pitout ? "OUT" : r.pits ? `${r.pits}` : "";
+      const pe = q(".f1r-pit"); setTxt(pe, pit); pe.className = `f1r-pit${r.pit || r.pitout ? " on" : ""}`;
+    });
+    Object.keys(F1L.els).forEach((k) => { if (!seen.has(k)) { F1L.els[k].remove(); delete F1L.els[k]; } });
+    // race control + weather
+    const rc = $("#f1l-rc");
+    const rcH = (d.rc || []).map((m) => {
+      const f = (m.flag || "").toUpperCase(), cat = (m.cat || "").toLowerCase();
+      const c = /RED/.test(f) ? "r" : /YELLOW/.test(f) ? "y" : /GREEN|CLEAR/.test(f) ? "g" : /BLUE/.test(f) ? "b" : /CHEQUERED/.test(f) ? "ch" : cat === "safetycar" ? "sc" : "n";
+      const tm = m.utc ? fmtHM(new Date(m.utc.endsWith("Z") ? m.utc : m.utc + "Z")) : "";
+      return `<li><i class="rcd ${c}"></i><span>${esc(m.msg)}</span><small>${m.lap ? `L${m.lap}` : esc(tm)}</small></li>`;
+    }).join("") || `<li class="none"><span>No messages yet</span></li>`;
+    if (rc.dataset.h !== rcH) { rc.dataset.h = rcH; rc.innerHTML = rcH; }
+    const w = d.wx || {};
+    const wxH = [w.air != null ? `<span><small>Air</small><b>${Math.round(+w.air)}°</b></span>` : "", w.track != null ? `<span><small>Track</small><b>${Math.round(+w.track)}°</b></span>` : "",
+      w.hum != null ? `<span><small>Humidity</small><b>${Math.round(+w.hum)}%</b></span>` : "", `<span><small>Rain</small><b class="${w.rain ? "c-bl" : ""}">${w.rain ? "Yes" : "No"}</b></span>`].join("");
+    const wxe = $("#f1l-wx"); if (wxe.dataset.h !== wxH) { wxe.dataset.h = wxH; wxe.innerHTML = wxH; }
+  }
+  $("#f1l-gh").addEventListener("click", () => {
+    if (!F1L.d || !F1L.d.race) return;
+    buzz(); F1L.gapMode = F1L.gapMode === "int" ? "lead" : "int"; LS.set("f1gap", F1L.gapMode); renderF1Live();
+  });
+  pageHooks.push((id) => { if (id === "f1" && F1L.d && F1L.d.on) requestAnimationFrame(renderF1Live); });
+  setInterval(() => {
+    if (!F1L.d || !F1L.d.on || F1L.d.race) return;
+    if (pid === "f1") renderF1Big(); else if (ISL.cur && ISL.cur.id === "f1") islandUpdate();
+  }, 500);
   function renderF1() {
     const f = S.f1; if (!f) return;
     const n = f.next, t = nowS();
@@ -1043,7 +1160,8 @@
     const mic = S.air.mic || [], cam = S.air.cam || [];
     if (mic.length || cam.length) a.push({ id: "air" });
     const f = f1State();
-    if (f && (f.live || f.soonMin <= 15)) a.push({ id: "f1", f });
+    const f1on = F1L.d && F1L.d.on;
+    if ((f && (f.live || f.soonMin <= 15)) || f1on) { if (!(f1on && pid === "f1")) a.push({ id: "f1", f: f || { live: true, soonMin: 0 } }); }
     const r = rainState();
     if (r && (r.now || r.inMin <= 30)) a.push({ id: "rain", r });
     return a;
@@ -1066,6 +1184,14 @@
       return [`<i class="ii ${cam.length && !mic.length ? "c-gr" : "c-or"}">${svg(cam.length && !mic.length ? "camera" : "mic")}</i>`, `<span class="${cam.length && !mic.length ? "c-gr" : "c-or"}">${esc(who) || "On Air"}</span>`];
     }
     if (act.id === "f1") {
+      const L = F1L.d && F1L.d.on ? F1L.d : null;
+      if (L) {
+        const [, tc] = TRACK[L.track] || TRACK[1];
+        const left = !L.race ? f1ClockLeft() : null;
+        const txt = L.race && L.lap ? `L${L.lap}/${L.laps || "?"}` : left != null ? fmtClock(left) : "LIVE";
+        const lead = (L.rows || [])[0];
+        return [`<span class="f1-mark">F1</span>${lead ? `<span class="isl-f1d" style="--tc:${esc(lead.col)}">${esc(lead.tla)}</span>` : ""}`, `<span class="${tc === "y" || tc === "sc" ? "c-or" : tc === "r" ? "c-rd" : "c-rd"}">${txt}</span>`];
+      }
       const f = act.f; const txt = f.live ? "LIVE" : `${Math.max(1, Math.round(f.soonMin))}m`;
       return [`<span class="f1-mark">F1</span>`, `<span class="${f.live ? "c-rd" : ""}">${txt}</span>`];
     }
@@ -1134,7 +1260,7 @@
     }
     const prim = acts[0], sec = acts[1];
     if (!prim) { ISL.mode = "hidden"; island.dataset.mode = "hidden"; bub.classList.remove("on"); ISL.cur = null; return; }
-    const sig = `${prim.id}|${prim.id === "drive" ? gearTxt(FZ.d.gear) + Math.round(FZ.d.kmh) : ""}|${prim.id === "game" && GAME.d ? Math.round(GAME.d.fps || 0) : ""}|${prim.id === "focus" ? Math.round(fcLeft()) + "" + FC.paused : ""}|${islandArt}|${JSON.stringify(S.air)}|${prim.f ? Math.round(prim.f.soonMin) + "" + !!prim.f.live : ""}|${prim.r ? prim.r.inMin + "" + prim.r.now : ""}`;
+    const sig = `${prim.id}|${prim.id === "drive" ? gearTxt(FZ.d.gear) + Math.round(FZ.d.kmh) : ""}|${prim.id === "game" && GAME.d ? Math.round(GAME.d.fps || 0) : ""}|${prim.id === "focus" ? Math.round(fcLeft()) + "" + FC.paused : ""}|${islandArt}|${JSON.stringify(S.air)}|${prim.f ? Math.round(prim.f.soonMin) + "" + !!prim.f.live : ""}|${prim.r ? prim.r.inMin + "" + prim.r.now : ""}|${prim.id === "f1" && F1L.d && F1L.d.on ? `${F1L.d.lap}${F1L.d.track}${((F1L.d.rows || [])[0] || {}).tla}${Math.floor(f1ClockLeft() || 0)}` : ""}`;
     if (ISL.sig !== sig || ISL.mode !== "compact") {
       const [l, rr] = compactHTML(prim);
       $("#isl-l").innerHTML = l; $("#isl-r").innerHTML = rr; ISL.sig = sig;
