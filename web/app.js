@@ -1252,7 +1252,7 @@
     buzz();
     if (t.dataset.sys) {
       send({ a: "sys", v: t.dataset.sys });
-      toast({ shot: "Screenshot saved", snip: "Snip", desk: "Show desktop", lock: "PC locked", gshot: "Game screenshot captured", gclip: "Clip saved (last 30s)" }[t.dataset.sys] || "Done", "check");
+      toast({ shot: "Screenshot saved", snip: "Snip", desk: "Show desktop", lock: "PC locked", gshot: "Capturing…", gclip: "Saving the last 30 seconds…" }[t.dataset.sys] || "Done", "check");
     } else if (t.dataset.mode) {
       if ($("#cc-perf").classList.contains("na")) { toast("G-Helper not found", "xmark", true); return; }
       $$("#cc-perf button").forEach((b) => b.classList.toggle("on", b === t));
@@ -1796,10 +1796,8 @@
     setTxt($("#gm-cpu-w"), lp.cpuW != null ? `${Math.round(lp.cpuW)} W` : "--");
     setTxt($("#gm-gpu-w"), lp.gpuW != null ? `${Math.round(lp.gpuW)} W` : "--");
     // memory
-    setTxt($("#gm-ram"), sy.ramUsed != null ? sy.ramUsed.toFixed(1) : "--");
-    setTxt($("#gm-ramt"), sy.ramTot ? ` / ${Math.round(sy.ramTot)} GB` : "");
-    $("#gm-ramb").style.width = `${sy.ram || 0}%`;
-    setTxt($("#gm-vram"), sy.vram != null ? `VRAM ${sy.vram.toFixed(1)} GB` : "VRAM --");
+    setTxt($("#gm-ram"), sy.ramUsed != null ? `${sy.ramUsed.toFixed(1)} GB` : "--");
+    setTxt($("#gm-vram"), sy.vram != null ? `${sy.vram.toFixed(1)} GB` : "--");
     // fans + mode
     const fan = (lp.fans || [])[0];
     const MODE_N = { silent: "Silent", balanced: "Balanced", turbo: "Turbo" };
@@ -1816,7 +1814,83 @@
     if (pid === "gaming") renderGame();
     if (ISL.cur && ISL.cur.id === "game") islandUpdate();
   };
-  pageHooks.push((id) => { if (id === "gaming") renderGame(); });
+  pageHooks.push((id) => { if (id === "gaming") { renderGame(); renderPlay(); } });
+
+  /* play time: Screen Time, for games */
+  const fmtDur = (min) => { if (min == null) return "--"; const h = Math.floor(min / 60), m = min % 60; return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`; };
+  Hd.play = (m) => { S.play = m; if (pid === "gaming") renderPlay(); };
+  function renderPlay() {
+    const p = S.play; if (!p) return;
+    setTxt($("#gp-today"), fmtDur(p.today));
+    setTxt($("#gp-sub"), p.now ? `today · ${p.now}` : p.top ? `today · mostly ${p.top}` : "today");
+    const max = Math.max(60, ...p.week), L = ["M", "T", "W", "T", "F", "S", "S"];
+    const bars = $("#gp-bars");
+    if (bars.children.length !== 7) bars.innerHTML = L.map((d) => `<div class="gp-b"><div class="gp-c"><i></i></div><span>${d}</span></div>`).join("");
+    [...bars.children].forEach((el, i) => {
+      el.classList.toggle("on", i === p.dow); el.classList.toggle("fut", i > p.dow);
+      $("i", el).style.height = `${Math.max(p.week[i] ? 4 : 0, p.week[i] / max * 100).toFixed(1)}%`;
+    });
+    const tot = p.week.reduce((a, b) => a + b, 0);
+    const diff = p.prev >= 30 ? Math.round((tot - p.prev) / p.prev * 100) : null;
+    $("#gp-week").innerHTML = `This week <b>${fmtDur(tot)}</b>${diff != null ? ` · <span class="${diff > 0 ? "up" : "dn"}">${diff > 0 ? "↑" : "↓"}${Math.abs(diff)}%</span>` : ""}`;
+  }
+
+  /* captures gallery: Game Bar / NVIDIA clips and screenshots on the PC */
+  const CAP = { list: null, tool: "gamebar", dirs: [] };
+  const capUrl = (id, dl) => `/cap/${id}?k=${encodeURIComponent(TOKEN)}${dl ? "&dl=1" : ""}`;
+  const thumbUrl = (id) => `/capthumb/${id}?k=${encodeURIComponent(TOKEN)}`;
+  function capWhen(ts) {
+    const d = new Date(ts * 1000), now = new Date(), day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const dd = Math.round((day(now) - day(d)) / 864e5);
+    return `${dd === 0 ? "Today" : dd === 1 ? "Yesterday" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}, ${fmtHM(d)}`;
+  }
+  function openCaps() { buzz(); CAP.list = null; renderCaps(); const o = $("#capov"); o.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => o.classList.add("on"))); send({ a: "caps" }); }
+  function closeCaps() { const o = $("#capov"); o.classList.remove("on"); setTimeout(() => { o.hidden = true; }, 280); }
+  Hd.caps = (m) => { CAP.list = m.list || []; CAP.tool = m.tool || "gamebar"; CAP.dirs = m.dirs || []; renderCaps(); };
+  function renderCaps() {
+    $$("#cap-tool button").forEach((b) => b.classList.toggle("on", b.dataset.tool === CAP.tool));
+    const g = $("#cap-grid");
+    if (!CAP.list) { g.innerHTML = `<div class="cap-empty"><span>Loading…</span></div>`; $("#cap-sub").textContent = ""; return; }
+    const n = CAP.list.length;
+    $("#cap-sub").textContent = n ? `${n} recent on your PC` : "";
+    if (!n) {
+      g.innerHTML = `<div class="cap-empty"><b>No captures yet</b><span>${CAP.tool === "nvidia"
+        ? "Turn on Instant Replay in the NVIDIA app overlay (Alt+Z), then tap Clip 30s while you play."
+        : "On the PC, turn on Settings → Gaming → Captures → Record what happened, then tap Clip 30s while you play."}</span></div>`;
+      return;
+    }
+    g.innerHTML = CAP.list.map((c) => `<button class="cap-it${c.kind === "video" ? " vid" : ""}" data-cap="${c.id}"><span class="cap-k">${svg(c.kind === "video" ? "film" : "photo")}</span>`
+      + `<img loading="lazy" src="${thumbUrl(c.id)}" alt="" onerror="this.remove()"><span class="cap-l"><b>${esc(c.game || (c.kind === "video" ? "Clip" : "Screenshot"))}</b><small>${esc(capWhen(c.ts))}</small></span>`
+      + `${c.kind === "video" ? `<span class="cap-play">${svg("play")}</span>` : ""}</button>`).join("");
+  }
+  function openCapView(c) {
+    if (!c) return;
+    $("#capv-t").textContent = c.game || (c.kind === "video" ? "Clip" : "Screenshot");
+    $("#capv-s").textContent = `${capWhen(c.ts)} · ${fmtBytes(c.size)}`;
+    $("#capv-dl").href = capUrl(c.id, true);
+    $("#capv-body").innerHTML = c.kind === "video" ? `<video src="${capUrl(c.id)}" controls playsinline autoplay></video>` : `<img src="${capUrl(c.id)}" alt="">`;
+    const v = $("#capview"); v.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => v.classList.add("on")));
+  }
+  function closeCapView() {
+    const v = $("#capview"); v.classList.remove("on");
+    const vid = $("video", v); if (vid) vid.pause();
+    setTimeout(() => { v.hidden = true; $("#capv-body").innerHTML = ""; }, 260);
+  }
+  $("#cap-grid").addEventListener("click", (e) => { const b = e.target.closest("[data-cap]"); if (!b || !CAP.list) return; buzz(); openCapView(CAP.list.find((c) => c.id === b.dataset.cap)); });
+  $("#capv-close").addEventListener("click", () => { buzz(); closeCapView(); });
+  $("#cap-done").addEventListener("click", () => { buzz(); closeCaps(); });
+  $("#gm-caps").addEventListener("click", openCaps);
+  $("#cap-tool").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tool]"); if (!b || b.dataset.tool === CAP.tool) return;
+    buzz(); CAP.tool = b.dataset.tool; renderCaps(); send({ a: "captool", tool: CAP.tool });
+    toast(CAP.tool === "nvidia" ? "Clips now use NVIDIA Instant Replay" : "Clips now use Xbox Game Bar", "check");
+  });
+  Hd.capnew = (m) => {
+    const c = m.item; if (!c) return;
+    buzz(20);
+    toast(`${c.kind === "video" ? "Clip" : "Screenshot"} saved${c.game ? ` · ${c.game}` : ""}`, c.kind === "video" ? "film" : "photo");
+    if (!$("#capov").hidden) send({ a: "caps" });
+  };
   const statHooks = [() => { if (pid === "gaming") renderGame(); }];
   { const hs = Hd.sys, hl = Hd.laptop;
     Hd.sys = (m) => { hs(m); statHooks.forEach((fn) => fn()); };
@@ -2066,13 +2140,48 @@
   /* =========================================================================
      Meeting mode
      ========================================================================= */
+  const DV = { d: null, ids: "" };
+  Hd.dvoice = (m) => { DV.d = m; if (pid === "meet") renderMeet(); };
+  function renderVC() {
+    const box = $("#mt-vc"), us = (DV.d && DV.d.users) || [];
+    const ids = us.map((u) => u.id).join(",");
+    if (ids !== DV.ids) {
+      DV.ids = ids;
+      box.dataset.n = String(Math.min(us.length, 9));
+      box.innerHTML = us.slice(0, 12).map((u) => `<div class="vc-u" data-uid="${esc(u.id)}"><span class="vc-av"><img src="${esc(u.av)}" alt="" referrerpolicy="no-referrer"><i class="vc-st"></i></span><b>${esc(u.name)}</b></div>`).join("")
+        + (us.length > 12 ? `<div class="vc-more">+${us.length - 12}</div>` : "");
+    }
+    us.slice(0, 12).forEach((u) => {
+      const el = box.querySelector(`[data-uid="${CSS.escape(u.id)}"]`); if (!el) return;
+      el.classList.toggle("sp", !!u.sp); el.classList.toggle("mu", !!u.mute); el.classList.toggle("de", !!u.deaf);
+      const st = u.deaf ? "headphones.slash" : u.mute ? "micoff" : "";
+      const i = $(".vc-st", el); if (i.dataset.s !== st) { i.dataset.s = st; i.innerHTML = st ? svg(st) : ""; }
+    });
+  }
   function renderMeet() {
-    const c = CTX.call, muted = !!(S.vol && S.vol.mic);
+    const c = CTX.call, muted = !!(S.vol && S.vol.mic), dv = DV.d;
+    const dc = !!(c && c.voice && dv && dv.status === "ready" && dv.ch);
     $("#p-meet").classList.toggle("idle", !c);
+    $("#p-meet").classList.toggle("dc", dc);
+    $("#mt-dcset").hidden = !(c && /discord/i.test(c.app) && dv && ["setup", "error"].includes(dv.status));
+    if (dc) {
+      const n = (dv.users || []).length;
+      $("#mt-app").textContent = `Discord${dv.ch.guild ? ` · ${dv.ch.guild}` : ""}`;
+      $("#mt-title").textContent = dv.ch.name;
+      $("#mt-sub").textContent = `${n} in voice${(dv.users || []).some((u) => u.sp) ? ` · ${(dv.users || []).filter((u) => u.sp).map((u) => u.name).slice(0, 2).join(", ")} talking` : ""}`;
+      renderVC();
+      [["mute", "micoff", "mic"], ["deaf", "headphones.slash", "headphones"]].forEach(([k, on, off]) => {
+        const v = !!(dv.me && dv.me[k]);
+        const ic = $(`#dv-${k}ic`); ic.classList.toggle("on", v); ic.classList.toggle("red", v); ic.innerHTML = `<i>${svg(v ? on : off)}</i>`;
+        $(`#dv-${k}s`).textContent = v ? "On" : "Off";
+      });
+      renderMeetTimer();
+      return;
+    }
     $("#mt-app").textContent = c ? c.app : "Call";
     const title = c && c.title ? c.title.replace(/\s*[|·-]\s*(Microsoft Teams|Zoom( Workplace| Meeting)?|Discord|Google Chrome|Microsoft Edge|Slack)\s*$/i, "").trim() : "";
     $("#mt-title").textContent = c ? title || "Call in progress" : "No call right now";
-    $("#mt-sub").textContent = c ? (c.cam ? "Camera is on" : "Camera off") : "This page opens by itself when a call starts";
+    $("#mt-sub").textContent = c ? (dv && /discord/i.test(c.app) && dv.status === "auth" ? "Tap Authorize in Discord on your PC" : c.cam ? "Camera is on" : "Camera off") : "This page opens by itself when a call starts";
     const mb = $("#mt-mute");
     mb.classList.toggle("muted", muted);
     mb.innerHTML = svg(muted ? "micoff" : "mic");
@@ -2092,7 +2201,28 @@
     buzz(); S.vol = Object.assign({}, S.vol, { mic: !(S.vol && S.vol.mic) }); renderMeet(); send({ a: "mic" });
   });
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-call]"); if (b) { buzz(); send({ a: "call", cmd: b.dataset.call }); } });
-  holdButton("#mt-leave", 900, () => send({ a: "call", cmd: "leave" }));
+  holdButton("#mt-leave", 900, () => send($("#p-meet").classList.contains("dc") ? { a: "dvoice", cmd: "leave" } : { a: "call", cmd: "leave" }));
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-dv]"); if (!b || !DV.d) return;
+    buzz(); const k = b.dataset.dv;
+    DV.d.me = { ...DV.d.me, [k]: !(DV.d.me && DV.d.me[k]) }; renderMeet();
+    send({ a: "dvoice", cmd: k });
+  });
+  // Discord setup sheet
+  const DCP = { target: null };
+  $("#mt-dcset").addEventListener("click", () => { buzz(); sheetOpen("#dcsheet"); });
+  $("#dc-cancel").addEventListener("click", () => sheetClose("#dcsheet"));
+  $("#dcsheet").addEventListener("click", (e) => {
+    if (e.target.id === "dcsheet") { sheetClose("#dcsheet"); return; }
+    const p = e.target.closest("[data-dcpaste]"); if (!p) return;
+    buzz(); DCP.target = p.dataset.dcpaste; send({ a: "clip_get" });
+  });
+  { const hc = Hd.clip; Hd.clip = (m) => { if (DCP.target) { const el = $(`#${DCP.target}`); DCP.target = null; el.value = (m.text || "").trim(); toast(m.text ? "Pasted from PC" : "PC clipboard is empty", m.text ? "check" : "xmark", !m.text); return; } hc(m); }; }
+  $("#dc-save").addEventListener("click", () => {
+    const id = $("#dc-id").value.trim(), secret = $("#dc-sec").value.trim();
+    if (!/^\d{15,22}$/.test(id) || secret.length < 16) { toast("Check the Client ID and Secret", "xmark", true); return; }
+    buzz(); send({ a: "discord_setup", id, secret }); sheetClose("#dcsheet");
+  });
   pageHooks.push((id) => { if (id === "meet") renderMeet(); });
 
   /* one slow ticker for the clock-like bits */

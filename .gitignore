@@ -8,3 +8,5 @@ fh6_cars.cache.json
 deskdeck.log
 __pycache__/
 *.pyc
+playtime.json
+discord.json

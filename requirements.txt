@@ -17,3 +17,5 @@ winrt-Windows.UI.Notifications ; sys_platform == "win32"
 winrt-Windows.UI.Notifications.Management ; sys_platform == "win32"
 winrt-Windows.ApplicationModel ; sys_platform == "win32"
 cryptography>=42
+winrt-Windows.Storage ; sys_platform == "win32"
+winrt-Windows.Storage.FileProperties ; sys_platform == "win32"

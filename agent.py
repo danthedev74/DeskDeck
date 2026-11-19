@@ -58,6 +58,8 @@ except Exception:
     VERSION = "dev"
 WEB = ROOT / "web"
 CONFIG_PATH = ROOT / "config.json"
+PLAY_PATH = ROOT / "playtime.json"
+DISCORD_PATH = ROOT / "discord.json"
 UA = "DeskDeck/1.0 (personal desk dashboard)"
 log = logging.getLogger("deskdeck")
 
@@ -78,6 +80,12 @@ DEFAULT_CONFIG = {
     "lyrics_offset": 0.3,
     # where files sent from the phone/iPad land ("" = your Downloads folder)
     "drop_dir": "",
+    # game clips: "gamebar" (Win+Alt+G, needs background recording on) or "nvidia" (Alt+F10, needs Instant Replay on)
+    "capture_tool": "gamebar",
+    # folders the Captures gallery shows (newest first); empty = Game Bar, NVIDIA, AMD and Screenshots folders
+    "capture_dirs": [],
+    # Discord voice: your own app from discord.com/developers (OAuth2 client id + secret, redirect http://localhost)
+    "discord": {"client_id": "", "client_secret": ""},
     # word-by-word lyric timing from NetEase Cloud Music when it has the song (falls back to LRCLIB lines)
     "word_lyrics": True,
     # Forza Horizon Data Out: set the game's Data Out port to "listen".
@@ -757,6 +765,347 @@ def _policy_config():
     return comtypes.CoCreateInstance(GUID("{870af99c-171d-4f9e-af0d-e63df40c2bc9}"), _IPOLICY, comtypes.CLSCTX_ALL)
 
 
+CAP_EXT = {".mp4": "video", ".mov": "video", ".m4v": "video", ".png": "image", ".jpg": "image", ".jpeg": "image", ".webp": "image"}
+CAP_DIRS = ["~/Videos/Captures", "~/Videos/NVIDIA", "~/Videos/Radeon ReLive", "~/Videos/AMD", "~/Pictures/Screenshots"]
+CAP_KEYS = {"gamebar": {"clip": "win+alt+g", "shot": "win+alt+printscreen"},
+            "nvidia": {"clip": "alt+f10", "shot": "alt+f1"}}
+
+
+def cap_game(path: str, base: str = ""):
+    """Best guess of the game a capture came from (Game Bar / NVIDIA / AMD file and folder names)."""
+    p = Path(path)
+    stem = p.stem
+    stem = re.sub(r"\.DVR$", "", stem, flags=re.I)
+    g = re.sub(r"\s+\d{4}[-.]\d{2}[-.]\d{2}.*$", "", stem).strip(" -_")
+    if not g or g.lower().startswith(("screenshot", "capture", "replay", "desktop")) or g == stem and re.search(r"\d{6}", stem):
+        par = p.parent.name
+        if base and os.path.normcase(str(p.parent)) == os.path.normcase(base):
+            return None
+        if par.lower() not in ("captures", "nvidia", "radeon relive", "amd", "screenshots", "videos", "pictures", "desktop"):
+            return par
+        return None
+    return g[:48]
+
+
+def img_thumb(path: str, size: int = 480):
+    from PIL import Image, ImageOps
+    import io
+    with Image.open(path) as im:
+        im = ImageOps.exif_transpose(im)
+        im.thumbnail((size, size))
+        if im.mode not in ("RGB", "L"):
+            im = im.convert("RGB")
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=80)
+        return out.getvalue()
+
+
+def to_jpeg(data: bytes, size: int = 480):
+    from PIL import Image
+    import io
+    with Image.open(io.BytesIO(data)) as im:
+        im.thumbnail((size, size))
+        im = im.convert("RGB")
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=80)
+        return out.getvalue()
+
+
+class DiscordRPC:
+    """Discord's local RPC (named pipe): voice channel, who's talking, mute / deafen / leave.
+    Needs your own Discord application (client id + secret); the first connect shows an Authorize prompt in Discord."""
+    SCOPES = ["rpc", "rpc.voice.read", "rpc.voice.write"]
+
+    def __init__(self, eng: "Engine"):
+        self.eng = eng
+        self.tr = None
+        self.buf = b""
+        self.wait: dict = {}
+        self.ev = asyncio.Queue()
+        self.ch = None              # {"id", "name", "guild"}
+        self.users: dict = {}       # id -> {...}
+        self.speaking: set = set()
+        self.me = {"mute": False, "deaf": False}
+        self.status = "off"         # off | setup | connecting | auth | ready | error
+        self.err = ""
+        self._pub = None
+
+    # ---- payload for the phone
+    def payload(self):
+        users = sorted(self.users.values(), key=lambda u: u["name"].lower())   # stable order: no jumping around while people talk
+        return {"status": self.status, "err": self.err, "ch": self.ch, "me": self.me,
+                "users": [{**u, "sp": u["id"] in self.speaking} for u in users][:24]}
+
+    async def publish(self, force=False):
+        p = self.payload()
+        s = json.dumps(p, sort_keys=True)
+        if force or s != self._pub:
+            self._pub = s
+            await self.eng.hub.send("dvoice", p)
+
+    # ---- pipe framing
+    class _Proto(asyncio.Protocol):
+        def __init__(self, rpc):
+            self.rpc = rpc
+
+        def data_received(self, data):
+            self.rpc._feed(data)
+
+        def connection_lost(self, exc):
+            self.rpc._closed()
+
+    def _feed(self, data):
+        self.buf += data
+        while len(self.buf) >= 8:
+            op, ln = struct.unpack("<II", self.buf[:8])
+            if len(self.buf) < 8 + ln:
+                return
+            body, self.buf = self.buf[8:8 + ln], self.buf[8 + ln:]
+            try:
+                msg = json.loads(body.decode("utf-8"))
+            except Exception:
+                continue
+            if op == 3:          # ping
+                self._write(4, msg)
+                continue
+            if op == 2:
+                self._closed()
+                return
+            n = msg.get("nonce")
+            if n and n in self.wait:
+                f = self.wait.pop(n)
+                if not f.done():
+                    f.set_result(msg)
+            else:
+                self.ev.put_nowait(msg)
+
+    def _closed(self):
+        for f in self.wait.values():
+            if not f.done():
+                f.set_exception(ConnectionError("Discord closed the connection"))
+        self.wait.clear()
+        self.ev.put_nowait({"evt": "__closed"})
+        self.tr = None
+
+    def _write(self, op, obj):
+        if self.tr is None:
+            raise ConnectionError("not connected")
+        data = json.dumps(obj).encode("utf-8")
+        self.tr.write(struct.pack("<II", op, len(data)) + data)
+
+    async def cmd(self, name, args=None, evt=None, timeout=10):
+        nonce = secrets.token_hex(8)
+        f = asyncio.get_running_loop().create_future()
+        self.wait[nonce] = f
+        msg = {"cmd": name, "args": args or {}, "nonce": nonce}
+        if evt:
+            msg["evt"] = evt
+        self._write(1, msg)
+        res = await asyncio.wait_for(f, timeout)
+        if res.get("evt") == "ERROR":
+            d = res.get("data") or {}
+            raise RuntimeError(f"{name}: {d.get('message')} ({d.get('code')})")
+        return res.get("data")
+
+    # ---- tokens
+    def _tokens(self):
+        try:
+            return json.loads(DISCORD_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _save_tokens(self, t):
+        DISCORD_PATH.write_text(json.dumps(t, indent=2), encoding="utf-8")
+
+    async def _token(self, cid, secret, code=None, refresh=None):
+        data = {"client_id": cid, "client_secret": secret}
+        if code:
+            data.update(grant_type="authorization_code", code=code, redirect_uri="http://localhost")
+        else:
+            data.update(grant_type="refresh_token", refresh_token=refresh)
+        async with self.eng.http.post("https://discord.com/api/oauth2/token", data=data) as r:
+            js = await r.json(content_type=None)
+            if r.status != 200 or "access_token" not in js:
+                raise RuntimeError(f"token: {js.get('error_description') or js.get('error') or r.status}")
+        js["expires_at"] = time.time() + float(js.get("expires_in", 604800)) - 120
+        self._save_tokens(js)
+        return js
+
+    # ---- main loop
+    async def run(self):
+        while True:
+            dc = self.eng.cfg.get("discord") or {}
+            cid, secret = str(dc.get("client_id") or "").strip(), str(dc.get("client_secret") or "").strip()
+            if not cid or not secret:
+                if self.status != "setup":
+                    self.status = "setup"
+                    await self.publish()
+                await asyncio.sleep(4)
+                continue
+            try:
+                await self.session(cid, secret)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.info("Discord voice: %s", e)
+                self.err = str(e)[:140]
+                self.status = "error" if "pipe" not in str(e).lower() and "not running" not in str(e).lower() else "off"
+            if self.tr is not None:
+                try:
+                    self.tr.close()
+                except Exception:
+                    pass
+                self.tr = None
+            self.ch, self.users, self.speaking = None, {}, set()
+            await self.publish()
+            await asyncio.sleep(8)
+
+    async def _connect(self):
+        loop = asyncio.get_running_loop()
+        if not hasattr(loop, "create_pipe_connection"):
+            raise RuntimeError("needs the Windows Proactor event loop")
+        last = None
+        for i in range(10):
+            try:
+                self.tr, _ = await loop.create_pipe_connection(lambda: self._Proto(self), rf"\\.\pipe\discord-ipc-{i}")
+                return
+            except Exception as e:
+                last = e
+        raise ConnectionError(f"Discord is not running ({last})")
+
+    async def session(self, cid, secret):
+        self.buf, self.ev = b"", asyncio.Queue()
+        await self._connect()
+        self.status, self.err = "connecting", ""
+        self._write(0, {"v": 1, "client_id": cid})
+        ready = await asyncio.wait_for(self.ev.get(), 10)
+        if ready.get("evt") != "READY":
+            raise RuntimeError(f"handshake: {ready.get('data') or ready}")
+        tok = self._tokens()
+        if tok.get("client_id") not in (None, cid):
+            tok = {}
+        if tok and tok.get("expires_at", 0) < time.time() and tok.get("refresh_token"):
+            try:
+                tok = await self._token(cid, secret, refresh=tok["refresh_token"])
+            except Exception as e:
+                log.info("Discord token refresh: %s", e)
+                tok = {}
+        if not tok.get("access_token"):
+            self.status = "auth"
+            await self.publish()
+            res = await self.cmd("AUTHORIZE", {"client_id": cid, "scopes": self.SCOPES}, timeout=120)
+            tok = await self._token(cid, secret, code=res["code"])
+            tok["client_id"] = cid
+            self._save_tokens(tok)
+        try:
+            await self.cmd("AUTHENTICATE", {"access_token": tok["access_token"]})
+        except RuntimeError:
+            self._save_tokens({})
+            raise
+        self.status = "ready"
+        log.info("Discord voice connected")
+        for e in ("VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE"):
+            await self.cmd("SUBSCRIBE", {}, evt=e)
+        vs = await self.cmd("GET_VOICE_SETTINGS") or {}
+        self.me = {"mute": bool(vs.get("mute")), "deaf": bool(vs.get("deaf"))}
+        sel = await self.cmd("GET_SELECTED_VOICE_CHANNEL")
+        await self._select(sel)
+        await self.publish(force=True)
+        while True:
+            m = await self.ev.get()
+            evt, d = m.get("evt"), m.get("data") or {}
+            if evt == "__closed":
+                raise ConnectionError("Discord closed")
+            if evt == "VOICE_CHANNEL_SELECT":
+                cid_ = d.get("channel_id")
+                await self._select(await self.cmd("GET_CHANNEL", {"channel_id": cid_}) if cid_ else None)
+            elif evt == "VOICE_SETTINGS_UPDATE":
+                self.me = {"mute": bool(d.get("mute")), "deaf": bool(d.get("deaf"))}
+            elif evt in ("VOICE_STATE_CREATE", "VOICE_STATE_UPDATE"):
+                self._user(d)
+            elif evt == "VOICE_STATE_DELETE":
+                uid = (d.get("user") or {}).get("id")
+                self.users.pop(uid, None)
+                self.speaking.discard(uid)
+            elif evt == "SPEAKING_START":
+                self.speaking.add(str(d.get("user_id")))
+            elif evt == "SPEAKING_STOP":
+                self.speaking.discard(str(d.get("user_id")))
+            await self.publish()
+
+    def _user(self, d):
+        u = d.get("user") or {}
+        uid = str(u.get("id") or "")
+        if not uid:
+            return
+        vs = d.get("voice_state") or {}
+        av = u.get("avatar")
+        url = f"https://cdn.discordapp.com/avatars/{uid}/{av}.png?size=128" if av else \
+            f"https://cdn.discordapp.com/embed/avatars/{(int(uid) >> 22) % 6 if uid.isdigit() else 0}.png"
+        self.users[uid] = {"id": uid, "name": d.get("nick") or u.get("global_name") or u.get("username") or "?", "av": url,
+                           "mute": bool(vs.get("mute") or vs.get("self_mute") or vs.get("suppress")),
+                           "deaf": bool(vs.get("deaf") or vs.get("self_deaf"))}
+
+    async def _select(self, ch):
+        old = self.ch
+        if old:
+            for e in ("VOICE_STATE_CREATE", "VOICE_STATE_UPDATE", "VOICE_STATE_DELETE", "SPEAKING_START", "SPEAKING_STOP"):
+                try:
+                    await self.cmd("UNSUBSCRIBE", {"channel_id": old["id"]}, evt=e)
+                except Exception:
+                    pass
+        self.users, self.speaking = {}, set()
+        if not ch:
+            self.ch = None
+            return
+        guild = None
+        if ch.get("guild_id"):
+            try:
+                guild = (await self.cmd("GET_GUILD", {"guild_id": ch["guild_id"]}) or {}).get("name")
+            except Exception:
+                guild = None
+        self.ch = {"id": ch.get("id"), "name": ch.get("name") or "Voice", "guild": guild, "since": int(time.time())}
+        for vs in ch.get("voice_states") or []:
+            self._user(vs)
+        for e in ("VOICE_STATE_CREATE", "VOICE_STATE_UPDATE", "VOICE_STATE_DELETE", "SPEAKING_START", "SPEAKING_STOP"):
+            await self.cmd("SUBSCRIBE", {"channel_id": ch.get("id")}, evt=e)
+
+    async def action(self, what):
+        if self.status != "ready":
+            return
+        if what == "mute":
+            await self.cmd("SET_VOICE_SETTINGS", {"mute": not self.me["mute"]})
+        elif what == "deaf":
+            await self.cmd("SET_VOICE_SETTINGS", {"deaf": not self.me["deaf"]})
+        elif what == "leave":
+            await self.cmd("SELECT_VOICE_CHANNEL", {"channel_id": None, "force": True})
+
+
+class DemoDiscord(DiscordRPC):
+    async def run(self):
+        people = [("1", "danthedev74"), ("2", "Aiman"), ("3", "Sam"), ("4", "Hafiz"), ("5", "Mei Ling")]
+        self.status = "ready"
+        self.ch = {"id": "c1", "name": "forza-convoy", "guild": "G14 Gang", "since": int(time.time()) - 1260}
+        for uid, n in people:
+            self.users[uid] = {"id": uid, "name": n, "av": f"https://cdn.discordapp.com/embed/avatars/{int(uid) % 6}.png",
+                               "mute": n == "Hafiz", "deaf": False}
+        while True:
+            self.speaking = set(random.sample([u for u, n in people if n not in ("Hafiz",)], k=random.choice([0, 1, 1, 2])))
+            self.users["1"]["mute"] = self.me["mute"]
+            self.users["1"]["deaf"] = self.me["deaf"]
+            if self.me["mute"]:
+                self.speaking.discard("1")
+            await self.publish()
+            await asyncio.sleep(random.uniform(0.6, 1.8))
+
+    async def action(self, what):
+        if what in ("mute", "deaf"):
+            self.me[what] = not self.me[what]
+        elif what == "leave":
+            log.info("[demo] discord leave")
+        await self.publish()
+
+
 # --------------------------------------------------------------------------------------
 # Hub - fan-out to connected phones
 # --------------------------------------------------------------------------------------
@@ -1323,6 +1672,27 @@ class WinPlatform:
 
     async def reveal(self, path):
         await self._io(lambda: subprocess.Popen(f'explorer /select,"{path}"', creationflags=0x08000000))
+
+    async def video_thumb(self, path):
+        """Windows' own thumbnail for a video (the same one Explorer shows)."""
+        from winrt.windows.storage import StorageFile
+        from winrt.windows.storage.fileproperties import ThumbnailMode, ThumbnailOptions
+        from winrt.windows.storage.streams import Buffer, InputStreamOptions
+        f = await StorageFile.get_file_from_path_async(os.path.abspath(path))
+        th = await f.get_thumbnail_async(ThumbnailMode.VIDEOS_VIEW, 480, ThumbnailOptions.RESIZE_THUMBNAIL)
+        try:
+            size = int(th.size)
+            if size <= 0:
+                return None
+            buf = Buffer(size)
+            res = await th.read_async(buf, size, InputStreamOptions.READ_AHEAD)
+            data = bytes(memoryview(res)[: int(res.length)])
+        finally:
+            try:
+                th.close()
+            except Exception:
+                pass
+        return await self._io(to_jpeg, data)
 
     # ---- media
     async def media_poll(self):
@@ -2018,6 +2388,51 @@ class DemoPlatform:
     async def reveal(self, path):
         log.info("[demo] reveal %s", path)
 
+    def demo_caps(self) -> Path:
+        d = Path(os.environ.get("TEMP") or "/tmp") / "deskdeck-demo-caps"
+        if getattr(self, "_caps_ok", False):
+            return d
+        self._caps_ok = True
+        try:
+            from PIL import Image, ImageDraw
+            d.mkdir(exist_ok=True)
+            now = time.time()
+            shots = [("Forza Horizon 6 2026-11-19 22-14-03.png", (255, 120, 60), (40, 20, 90)),
+                     ("Forza Horizon 6 2026-11-19 21-58-41.png", (60, 190, 255), (10, 30, 60)),
+                     ("Need for Speed Unbound 2026-11-18 23-02-11.png", (255, 60, 120), (20, 10, 30)),
+                     ("Screenshot 2026-11-17 101530.png", (120, 120, 140), (30, 30, 40))]
+            for k, (n, c1, c2) in enumerate(shots):
+                p = d / n
+                if not p.exists():
+                    im = Image.new("RGB", (640, 360))
+                    dr = ImageDraw.Draw(im)
+                    for y in range(360):
+                        t = y / 359
+                        dr.line([(0, y), (640, y)], fill=tuple(int(c1[i] * (1 - t) + c2[i] * t) for i in range(3)))
+                    dr.ellipse([420, 60, 560, 200], fill=(255, 230, 180))
+                    dr.polygon([(0, 360), (260, 220), (640, 300), (640, 360)], fill=tuple(v // 3 for v in c2))
+                    im.save(p)
+                os.utime(p, (now - 3600 * (k * 7 + 2), now - 3600 * (k * 7 + 2)))
+            if shutil.which("ffmpeg"):
+                for k, n in enumerate(["Forza Horizon 6 2026-11-20 01-50-12.mp4", "Need for Speed Unbound 2026-11-19 23-40-55.mp4"]):
+                    p = d / n
+                    if not p.exists():
+                        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"testsrc2=size=640x360:rate=30:duration=3",
+                                        "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "veryfast", str(p)], timeout=60)
+                    if p.exists():
+                        os.utime(p, (now - 600 * (k * 9 + 1), now - 600 * (k * 9 + 1)))
+        except Exception as e:
+            log.info("[demo] captures: %s", e)
+        return d
+
+    async def video_thumb(self, path):
+        if not shutil.which("ffmpeg"):
+            return None
+        r = await asyncio.create_subprocess_exec("ffmpeg", "-v", "error", "-ss", "1", "-i", path, "-frames:v", "1", "-vf", "scale=480:-1",
+                                                 "-f", "image2", "-c:v", "mjpeg", "-", stdout=subprocess.PIPE)
+        out, _ = await r.communicate()
+        return out or None
+
     async def text(self, s):
         log.info("[demo] type %r", s[:40])
 
@@ -2359,6 +2774,9 @@ class Engine:
         self.demo_game = demo_game
         self._game = None          # {"pid", "exe", "name"} of the game being played
         self._ctx_last = None
+        self._caps: dict = {}      # capture id -> (path, kind)
+        self._thumbs: dict = {}
+        self.discord = DemoDiscord(self) if demo else (DiscordRPC(self) if IS_WIN else None)
         self._meet_since = None
         self._call_title = None
         self._rules_at = 0.0
@@ -2421,8 +2839,10 @@ class Engine:
             (self.tick_weather, 600), (self.tick_f1, 1200), (self.tick_photos, 60),
             (self.tick_radio, 1.0), (self.tick_ctx, 1.5), (self.tick_game, 0.5),
             (self.tick_procs, 3.0), (self.tick_wifi, 30), (self.tick_quota, 30), (self.tick_focus, 1.0),
-            (self.tick_notes, 2.0), (self.tick_hooks, 15), (self.tick_cert, 300),
+            (self.tick_notes, 2.0), (self.tick_hooks, 15), (self.tick_cert, 300), (self.tick_play, 5.0),
         ]
+        if self.discord:
+            self.tasks.append(asyncio.create_task(self.discord.run()))
         if self.cfg.get("adb_reverse") and shutil.which("adb"):
             loops.append((self.tick_adb, 10))
         for fn, every in loops:
@@ -2799,6 +3219,9 @@ class Engine:
             if label:
                 call = {"app": label, "key": key, "cam": bool(air.get("cam"))}
                 break
+        dch = self.discord.ch if self.discord and self.discord.status == "ready" else None
+        if dch and (call is None or call["key"].startswith("discord")) and not (self.demo and call is None):
+            call = {"app": "Discord", "key": "discord", "cam": bool(call and call.get("cam")), "voice": True}
         if call and not self._meet_since:
             self._meet_since = time.time()
         if not call:
@@ -2919,6 +3342,146 @@ class Engine:
         self.cfg[lst_name] = lst
         await self._io(self._persist_cfg_key, lst_name, lst)
         await self.hub.send("tiles", self.tiles_payload(), keep=False)
+
+    # ---------------- play time (Screen Time, for games)
+    def _play_load(self):
+        if self.demo:
+            today = dt.date.today()
+            names = ["Forza Horizon 6", "Need for Speed™ Unbound", "EA SPORTS FC™ 26"]
+            out = {}
+            for k in range(13, 0, -1):
+                d = (today - dt.timedelta(days=k)).isoformat()
+                rnd = random.Random(k)
+                out[d] = {n: rnd.choice([0, 0, 1800, 2700, 4200, 6600]) for n in names}
+            out[today.isoformat()] = {"Forza Horizon 6": 4980, "Need for Speed™ Unbound": 1500}
+            return out
+        try:
+            return (json.loads(PLAY_PATH.read_text(encoding="utf-8")) or {}).get("days") or {}
+        except Exception:
+            return {}
+
+    def _play_save(self):
+        keep = sorted(self._play)[-120:]
+        self._play = {k: self._play[k] for k in keep}
+        tmp = PLAY_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"days": self._play}, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, PLAY_PATH)
+
+    def play_payload(self):
+        today = dt.date.today()
+        mon = today - dt.timedelta(days=today.weekday())
+        day = lambda d: self._play.get(d.isoformat()) or {}
+        week = [day(mon + dt.timedelta(days=k)) for k in range(7)]
+        prev = sum(sum(day(mon - dt.timedelta(days=7 - k)).values()) for k in range(7))
+        games: dict = {}
+        for d in week:
+            for n, s in d.items():
+                games[n] = games.get(n, 0) + s
+        tday = day(today)
+        top = sorted(tday.items(), key=lambda x: -x[1])
+        return {"today": int(sum(tday.values()) // 60), "top": top[0][0] if top and top[0][1] >= 60 else None,
+                "week": [int(sum(d.values()) // 60) for d in week], "dow": today.weekday(),
+                "games": [[n, int(s // 60)] for n, s in sorted(games.items(), key=lambda x: -x[1])[:3] if s >= 60],
+                "prev": int(prev // 60), "now": self._game["name"] if self._game else None}
+
+    async def tick_play(self):
+        if not hasattr(self, "_play"):
+            self._play = await self._io(self._play_load)
+            self._play_dirty, self._play_last, self._play_sent = 0.0, time.monotonic(), None
+        now = time.monotonic()
+        step, self._play_last = min(30.0, now - self._play_last), now
+        g = self._game
+        if g:
+            d = self._play.setdefault(dt.date.today().isoformat(), {})
+            d[g["name"]] = round(d.get(g["name"], 0) + step, 1)
+            self._play_dirty += step
+        if not self.demo and self._play_dirty and (self._play_dirty >= 60 or not g):
+            self._play_dirty = 0.0
+            try:
+                await self._io(self._play_save)
+            except Exception as e:
+                log.debug("playtime save: %s", e)
+        p = self.play_payload()
+        if p != self._play_sent:
+            self._play_sent = p
+            await self.hub.send("play", p)
+
+    # ---------------- captures gallery (Game Bar / NVIDIA / AMD clips + screenshots)
+    def cap_dirs(self):
+        if self.demo:
+            return [self.plat.demo_caps()]
+        return [Path(os.path.expandvars(os.path.expanduser(d))) for d in (self.cfg.get("capture_dirs") or CAP_DIRS)]
+
+    def _scan_caps(self):
+        found, bases = [], {}
+        for base in self.cap_dirs():
+            if not base.is_dir():
+                continue
+            for root, subdirs, files in os.walk(base):
+                if len(Path(root).relative_to(base).parts) >= 2:
+                    subdirs[:] = []
+                for f in files:
+                    kind = CAP_EXT.get(os.path.splitext(f)[1].lower())
+                    if not kind:
+                        continue
+                    fp = os.path.join(root, f)
+                    try:
+                        st = os.stat(fp)
+                    except OSError:
+                        continue
+                    if st.st_size < 1024:
+                        continue
+                    found.append((st.st_mtime, fp, kind, st.st_size))
+                    bases[fp] = str(base)
+        found.sort(reverse=True)
+        items = []
+        for mt, fp, kind, size in found[:72]:
+            cid = hashlib.sha1(fp.encode("utf-8", "replace")).hexdigest()[:14]
+            self._caps[cid] = (fp, kind)
+            items.append({"id": cid, "name": os.path.basename(fp), "kind": kind, "ts": int(mt), "size": size, "game": cap_game(fp, bases.get(fp, ""))})
+        return items
+
+    async def _cap_watch(self, what):
+        before = {i["id"] for i in await self._io(self._scan_caps)}
+        for wait in (2, 2, 3, 3, 4, 5):
+            await asyncio.sleep(wait)
+            items = await self._io(self._scan_caps)
+            new = [i for i in items if i["id"] not in before]
+            if new:
+                await self.hub.send("capnew", {"item": new[0]}, keep=False)
+                return
+
+    async def cap_handler(self, request):
+        if not self.authed(request):
+            return web.Response(status=403, text="bad token")
+        ent = self._caps.get(request.match_info["id"])
+        if not ent or not os.path.exists(ent[0]):
+            return web.Response(status=404)
+        hdr = {"Cache-Control": "private, max-age=3600"}
+        if request.query.get("dl"):
+            hdr["Content-Disposition"] = f'attachment; filename="{safe_filename(os.path.basename(ent[0]))}"'
+        return web.FileResponse(ent[0], headers=hdr)
+
+    async def capthumb_handler(self, request):
+        if not self.authed(request):
+            return web.Response(status=403, text="bad token")
+        ent = self._caps.get(request.match_info["id"])
+        if not ent:
+            return web.Response(status=404)
+        path, kind = ent
+        data = self._thumbs.get(path)
+        if data is None:
+            try:
+                data = await (self._io(img_thumb, path) if kind == "image" else self.plat.video_thumb(path))
+            except Exception as e:
+                log.debug("thumb %s: %s", path, e)
+                data = None
+            self._thumbs[path] = data or b""
+            while len(self._thumbs) > 200:
+                self._thumbs.pop(next(iter(self._thumbs)))
+        if not data:
+            return web.Response(status=204)
+        return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
     # ---------------- files sent from the phone / iPad
     def drop_dir(self) -> Path:
@@ -4060,7 +4623,32 @@ code{{background:#1c1c1e;padding:2px 6px;border-radius:6px}}</style></head><body
                 elif typ == "run":
                     await P.launch(val)
         elif a == "sys":
-            await P.sys_action(m.get("v"))
+            v = m.get("v")
+            if v in ("gclip", "gshot"):
+                tool = CAP_KEYS.get(self.cfg.get("capture_tool"), CAP_KEYS["gamebar"])
+                await P.keys(tool["clip" if v == "gclip" else "shot"])
+                asyncio.create_task(self._cap_watch(v))
+            else:
+                await P.sys_action(v)
+        elif a == "caps":
+            items = await self._io(self._scan_caps)
+            await ws.send_str(json.dumps({"t": "caps", "list": items, "tool": self.cfg.get("capture_tool", "gamebar"),
+                                          "dirs": [str(d) for d in self.cap_dirs() if d.is_dir()]}))
+        elif a == "captool":
+            tool = m.get("tool") if m.get("tool") in CAP_KEYS else "gamebar"
+            self.cfg["capture_tool"] = tool
+            await self._io(self._persist_cfg_key, "capture_tool", tool)
+        elif a == "dvoice":
+            if self.discord:
+                await self.discord.action(m.get("cmd"))
+        elif a == "discord_setup":
+            cid, sec = str(m.get("id") or "").strip(), str(m.get("secret") or "").strip()
+            if not re.fullmatch(r"\d{15,22}", cid) or len(sec) < 16:
+                await ws.send_str(json.dumps({"t": "toast", "msg": "Check the Client ID and Secret", "err": True}))
+                return
+            self.cfg["discord"] = {"client_id": cid, "client_secret": sec}
+            await self._io(self._persist_cfg_key, "discord", self.cfg["discord"])
+            await ws.send_str(json.dumps({"t": "toast", "msg": "Now tap Authorize in Discord on your PC", "icon": "check"}))
         elif a == "mode":
             await P.mode_set(m.get("v"))
             await asyncio.sleep(0.3)
@@ -4152,6 +4740,8 @@ def build_app(engine: Engine) -> web.Application:
         app.router.add_route("POST", path, h)
     app.router.add_get("/photo/{i}", engine.photo_handler)
     app.router.add_post("/api/upload", engine.upload_handler)
+    app.router.add_get("/cap/{id}", engine.cap_handler)
+    app.router.add_get("/capthumb/{id}", engine.capthumb_handler)
     app.router.add_get("/manifest.webmanifest", manifest)
     app.router.add_static("/s/", WEB, show_index=False)
     app.on_startup.append(engine.start)

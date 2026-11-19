@@ -173,7 +173,8 @@ def on_startup(icon, item):
 
 
 # ---------------- updates from GitHub releases
-KEEP = {"config.json", "cars.json", "hooks.json", "focus.json", "fh6_cars.cache.json", "deskdeck.log", "deskdeck.ico"}
+KEEP = {"config.json", "cars.json", "hooks.json", "focus.json", "fh6_cars.cache.json", "deskdeck.log", "deskdeck.ico",
+        "playtime.json", "discord.json"}
 KEEP_DIRS = {"certs", "__pycache__", ".git"}
 
 

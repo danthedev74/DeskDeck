@@ -374,22 +374,27 @@
             <path id="gm-area" fill="url(#gmg)"/><polyline id="gm-line" fill="none" stroke="#30d158" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
           </svg>
           <div class="gm-hint" id="gm-hint" hidden>FPS needs RivaTuner Statistics Server (comes with MSI Afterburner) running.</div>
+          <div class="gm-acts">
+            <button class="gm-act rec" data-sys="gclip"><i data-ic="record"></i><span>Clip 30s</span></button>
+            <button class="gm-act" data-sys="gshot"><i data-ic="camera"></i><span>Screenshot</span></button>
+            <button class="gm-act" id="gm-caps"><i data-ic="images"></i><span>Captures</span></button>
+          </div>
         </div>
         <div class="w gm-hw">
           <div class="gm-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="t"/><circle cx="50" cy="50" r="44" class="v" id="gm-cpu-r" pathLength="100"/></svg>
             <div><b id="gm-cpu-t">--</b><small>CPU</small></div></div>
-          <div class="gm-kv"><small>Load</small><b id="gm-cpu-l">--</b><small>Power</small><b id="gm-cpu-w">--</b></div>
+          <div class="gm-kv"><small>Load</small><b id="gm-cpu-l">--</b><small>Power</small><b id="gm-cpu-w">--</b><small>Memory</small><b id="gm-ram">--</b></div>
         </div>
         <div class="w gm-hw">
           <div class="gm-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="t"/><circle cx="50" cy="50" r="44" class="v" id="gm-gpu-r" pathLength="100"/></svg>
             <div><b id="gm-gpu-t">--</b><small>GPU</small></div></div>
-          <div class="gm-kv"><small>Load</small><b id="gm-gpu-l">--</b><small>Power</small><b id="gm-gpu-w">--</b></div>
+          <div class="gm-kv"><small>Load</small><b id="gm-gpu-l">--</b><small>Power</small><b id="gm-gpu-w">--</b><small>VRAM</small><b id="gm-vram">--</b></div>
         </div>
-        <div class="w gm-box">
-          <div class="gm-lbl">Memory</div>
-          <div class="gm-n"><b id="gm-ram">--</b><span id="gm-ramt"></span></div>
-          <div class="gm-bar"><i id="gm-ramb"></i></div>
-          <div class="gm-sub" id="gm-vram">VRAM --</div>
+        <div class="w gm-box gp">
+          <div class="gm-lbl"><i data-ic="hourglass"></i>Play Time</div>
+          <div class="gp-top"><b id="gp-today">--</b><span id="gp-sub">today</span></div>
+          <div class="gp-bars" id="gp-bars"></div>
+          <div class="gm-sub gp-week" id="gp-week"></div>
         </div>
         <div class="w gm-box">
           <div class="gm-lbl">Performance · G-Helper</div>
@@ -409,13 +414,19 @@
           <div><small class="mt-sub">In call</small><b class="mt-timer" id="mt-timer">--:--</b></div>
         </div>
         <div class="w mt-mid">
-          <button class="mt-mute" id="mt-mute" aria-label="Mute microphone"><i data-ic="mic"></i></button>
-          <b class="mt-state" id="mt-state">Mic on</b>
-          <small class="mt-sub">Mutes your PC's microphone in every app</small>
+          <div class="mt-solo">
+            <button class="mt-mute" id="mt-mute" aria-label="Mute microphone"><i data-ic="mic"></i></button>
+            <b class="mt-state" id="mt-state">Mic on</b>
+            <small class="mt-sub">Mutes your PC's microphone in every app</small>
+          </div>
+          <div class="mt-vc" id="mt-vc"></div>
+          <button class="pill mt-dcset" id="mt-dcset"><i data-ic="headphones"></i>Connect Discord voice</button>
         </div>
         <div class="mt-side">
-          <button class="w mt-btn" data-call="cam"><span class="mt-ic" id="mt-camic"><i data-ic="camera"></i></span><div><b>Camera</b><small id="mt-cams">Off</small></div></button>
-          <button class="w mt-btn" data-call="hand"><span class="mt-ic"><i data-ic="hand"></i></span><div><b>Raise hand</b><small>In the call app</small></div></button>
+          <button class="w mt-btn nodc" data-call="cam"><span class="mt-ic" id="mt-camic"><i data-ic="camera"></i></span><div><b>Camera</b><small id="mt-cams">Off</small></div></button>
+          <button class="w mt-btn nodc" data-call="hand"><span class="mt-ic"><i data-ic="hand"></i></span><div><b>Raise hand</b><small>In the call app</small></div></button>
+          <button class="w mt-btn dconly" data-dv="mute"><span class="mt-ic" id="dv-muteic"><i data-ic="mic"></i></span><div><b>Mute</b><small id="dv-mutes">Off</small></div></button>
+          <button class="w mt-btn dconly" data-dv="deaf"><span class="mt-ic" id="dv-deafic"><i data-ic="headphones"></i></span><div><b>Deafen</b><small id="dv-deafs">Off</small></div></button>
           <button class="w mt-btn mt-leave" id="mt-leave"><b>Hold to leave</b></button>
         </div>
       </div>
@@ -515,6 +526,36 @@
     <div class="te-sub">Icon</div>
     <div class="te-icons" id="te-icons"></div>
     <button class="link te-reset" id="te-reset">Reset to default</button>
+  </div>
+</div>
+
+<!-- captures gallery -->
+<div id="capov" class="cap" hidden>
+  <div class="cap-top">
+    <div><b>Captures</b><small id="cap-sub"></small></div>
+    <div class="seg cap-tool" id="cap-tool"><button data-tool="gamebar">Game Bar</button><button data-tool="nvidia">NVIDIA</button></div>
+    <button class="link strong" id="cap-done">Done</button>
+  </div>
+  <div class="cap-grid" id="cap-grid"></div>
+</div>
+<div id="capview" class="capv" hidden>
+  <div class="capv-top"><button class="link" id="capv-close">Close</button><div class="capv-t"><b id="capv-t"></b><small id="capv-s"></small></div><a class="link strong" id="capv-dl" download>Save</a></div>
+  <div class="capv-body" id="capv-body"></div>
+</div>
+
+<!-- Discord voice setup -->
+<div id="dcsheet" class="sheet" hidden>
+  <div class="sheet-card dc-card">
+    <div class="sheet-h"><button class="link" id="dc-cancel">Cancel</button><b>Connect Discord</b><button class="link strong" id="dc-save">Connect</button></div>
+    <ol class="dc-steps">
+      <li>On your PC, open <b>discord.com/developers/applications</b> and make a <b>New Application</b> (name it DeskDeck).</li>
+      <li>Go to <b>OAuth2</b>. Copy the <b>Client ID</b>, then <b>Reset Secret</b> and copy the <b>Client Secret</b>.</li>
+      <li>In <b>Redirects</b>, add <b>http://localhost</b> and press <b>Save Changes</b>.</li>
+      <li>Fill both in below and tap Connect. Discord on your PC asks you to <b>Authorize</b> once.</li>
+    </ol>
+    <div class="dc-row"><input id="dc-id" class="tin" placeholder="Client ID" inputmode="numeric" autocomplete="off"><button class="pill" data-dcpaste="dc-id"><i data-ic="down"></i>From PC</button></div>
+    <div class="dc-row"><input id="dc-sec" class="tin" placeholder="Client Secret" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="pill" data-dcpaste="dc-sec"><i data-ic="down"></i>From PC</button></div>
+    <div class="sheet-note">Tip: copy each value on the PC, then tap From PC.</div>
   </div>
 </div>
 
